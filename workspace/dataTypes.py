@@ -1002,6 +1002,10 @@ class reg_E_Node(object):
         for unit in self.lateral_connections:
             if unit is not self:
                 self.input += -1.0 * unit.act
+        # adjust by time fired.
+        if self.time_since_fired:
+            self.input -= 1/(.1+(0.0001*pow(math.e, self.time_since_fired)))
+            self.time_since_fired += 1
         
     def update_act(self):
         # update as leaky sigmoidal unit. 
