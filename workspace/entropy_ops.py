@@ -82,7 +82,7 @@ def ent_specific_semantics_same_diff(semantics):
     for semantic in semantics:
         if semantic.act >= 0.9:
             shared.append(semantic)
-        elif semantic.act >= 0.4 and semantic.act <= 0.6:
+        elif 0.4 <= semantic.act <= 0.6:
             unshared.append(semantic)
     # return the shared and unshared arrays.
     return shared, unshared
@@ -194,7 +194,7 @@ def learn_mag_circuit(learning_trials):
     time_unit1, time_unit2 = dataTypes.basicTimingNode('A', [], [], []), dataTypes.basicTimingNode('B', [], [], [])
     time_unit3 = dataTypes.basicGateNode('gate', [], [])
     Local_inhib = dataTypes.localInhibitor()
-    semantic1, semantic2, semantic3 = dataTypes.MLS_sem('semantic1', [], [], []), dataTypes.MLS_sem('semantic2', [], [], []), dataTypes.MLS_sem('semantic3', [], [], [])
+    semantic1, semantic2, semantic3 = dataTypes.MLS_sem('semantic1', [], []), dataTypes.MLS_sem('semantic2', [], []), dataTypes.MLS_sem('semantic3', [], [])
     # set a POs flag indicating whether both POs are active after settling (to be used in learning magnitude vs. sameness; 1.0==both POs active after settling, 0.0==only one PO is active after settling). 
     POs = 0.0
     # create links between settling unit and timing units. Weights are random values between .5 and 1. 
@@ -327,7 +327,7 @@ def learn_mag_circuit(learning_trials):
             for semantic in MLS_semantics:
                 if semantic.input < max_sem_input:
                     semantic.input -= max_sem_input
-            # then updat max_sem_input for divisive normalisation. 
+            # then update max_sem_input for divisive normalisation. 
             for semantic in MLS_semantics:
                 semantic.set_max_sem_input(max_sem_input)
             # update the activation and clear the input of time-in-cycle and semantic units. 
@@ -370,8 +370,160 @@ def learn_mag_circuit(learning_trials):
         print gate_units[0].name, ' to ', link.mylowernode.name, ' weight = ', str(link.weight), '\n'
     print '\n'
 
+# function to print state of the network for use with learn_mag_circuit_neural() function directly below. 
+def print_net(Enodes, Anodes, semantics):
+    # print the state of all the nodes in the network. 
+    for Enode in Enodes:
+        print(Enode.name, '.input = ', str(Enode.input), ' ; .act = ', str(Enode.act), ' ; thresh = ', Enode.threshold, '\n')
+    for Anode in Anodes:
+        print(Anode.name, '.input = ', str(Anode.input), ' ; .act = ', str(Anode.act), '\n')
+    for semantic in semantics:
+        print(semantic.name, '.input = ', str(semantic.input), ' ; .act = ', str(semantic.act), '\n')
+    print('\n')
+    for link in Links:
+        print('Weight between ', link.myhighernode.name, ' and ', link.mylowernode.name, ' = ', str(link.weight))
+# function to learn basic magnitude comparison circuit that will support the output of the ent_magnitudeMoreLessSame() function in a more neural manner. It takes as input the number of learning trials you want to give it. 
+def learn_mag_circuit_neural(learning_trials):
+    # make the E nodes. 
+    Enode1 = dataTypes.reg_E_Node('E1', [], [], [])
+    Enode2 = dataTypes.reg_E_Node('E2', [], [], [])
+    Enode3 = dataTypes.gaussian_E_Node('EG', [], [], [])
+    Enodes = [Enode1, Enode2, Enode3]
+    # make the A nodes. 
+    Anodes = []
+    for i in range(3):
+        Anode = dataTypes.reg_A_Node(str(i), [], [], [])
+        Anodes.append(Anode)
+    # make the semantics.
+    semantics = []
+    for i in range(10):
+        new_sem = dataTypes.MLS_sem(str(i), [], [])
+        semantics.append(new_sem)
+    # make stand-in POs.
+    PO1 = dataTypes.basicTimingNode('PO1', [], [], [])
+    PO2 = dataTypes.basicTimingNode('PO2', [], [], [])
+    POs = [PO1, PO2]
 
+    # connect stand-in POs to E nodes.
+    Links = []
+    for PO in POs:
+        for Enode in Enodes:
+            new_link = dataTypes.basicLink(PO, Enode, 1.0)
+            Enode.higher_connections.append(new_link)
+    # connect E nodes to A nodes. 
+    for Enode in Enodes:
+        Enode.lateral_connections = Enodes
+        for Anode in Anodes:
+            new_link = dataTypes.basicLink(Enode, Anode, random.uniform(.1, 1.0))
+            Enode.lower_connections.append(new_link)
+            Anode.higher_connections.append(new_link)
+            Links.append(new_link)
+    # connect the A nodes to semantics.
+    for Anode in Anodes:
+        Anode.lateral_connections = Anodes
+        for semantic in semantics:
+            new_link = dataTypes.basicLink(Anode, semantic, random.random())
+            Anode.lower_connections.append(new_link)
+            semantic.higher_connections.append(new_link)
+            Links.append(new_link)
 
+    learning_trials = 10
+    for i in range(learning_trials):
+        # set activation of POs.
+        same_trial = random.random()
+        if same_trial > .5:
+            PO1.act = 1.0
+            same_trial = False
+        else:
+            PO1.act, PO2.act = 0.5, 0.5
+            same_trial = True
+        # until the local inhibitor fires (i.e., while the first PO is active), update inputs, activations, and weights. 
+        for i in range(110):
+            # update inputs to all units. 
+            for Enode in Enodes:
+                Enode.update_input()
+            for Anode in Anodes:
+                Anode.update_input()
+            for semantic in semantics:
+                semantic.update_input()
+            #pdb.set_trace()
+            # get max_sem_input. 
+            max_sem_input = 0.0
+            for semantic in semantics:
+                if semantic.input > max_sem_input:
+                    max_sem_input = semantic.input
+            # subtractive normalisation. 
+            for semantic in semantics:
+                if semantic.input < max_sem_input:
+                    semantic.input -= max_sem_input
+            # then update max_sem_input for divisive normalisation. 
+            for semantic in semantics:
+                semantic.set_max_sem_input(max_sem_input)
+            # update activation and clear the input of all units. 
+            for Enode in Enodes:
+                Enode.update_act()
+                Enode.clear_input()
+            for Anode in Anodes:
+                Anode.update_act()
+                Anode.clear_input()
+            for semantic in semantics:
+                semantic.update_act()
+                semantic.clear_input()
+            # learning. 
+            if i >= 20:
+                for Enode in Enodes:
+                    Enode.adjust_links()
+                for Anode in Anodes:
+                    Anode.adjust_links()
+        # after n iterations, if same_trial is False, then fire the local inhibitor, which inhibits all units, and start time since last fired of the most active A unit. 
+        if not same_trial:
+            active_unit = None
+            max_act = 0.0
+            for Anode in Anodes:
+                if Anode.act > max_act:
+                    active_unit = Anode
+            active_unit.time_since_fired = 1
+        for Enode in Enodes:
+            Enode.clear_input_and_act()
+        for Anode in Anodes:
+            Anode.clear_input_and_act
+        for semantic in semantics:
+            semantic.clear_all()
+        # until the global inhibitor fires (i.e., while second PO is active), update inputs, activations, and weights. 
+        for i in range(110):
+            # update inputs to all units. 
+            for Enode in Enodes:
+                Enode.update_input()
+            for Anode in Anodes:
+                Anode.update_input()
+            for semantic in semantics:
+                semantic.update_input()
+            # get max_sem_input. 
+            max_sem_input = 0.0
+            for semantic in semantics:
+                if semantic.input > max_sem_input:
+                    max_sem_input = semantic.input
+            # subtractive normalisation. 
+            for semantic in semantics:
+                if semantic.input < max_sem_input:
+                    semantic.input -= max_sem_input
+            # then update max_sem_input for divisive normalisation. 
+            for semantic in semantics:
+                semantic.set_max_sem_input(max_sem_input)
+            # update activation of all units. 
+            for Enode in Enodes:
+                Enode.update_act()
+            for Anode in Anodes:
+                Anode.update_act()
+            for semantic in semantics:
+                semantic.update_act()
+            # learning. 
+            if i >= 20:
+                for Enode in Enodes:
+                    Enode.adjust_links()
+                for Anode in Anodes:
+                    Anode.adjust_links() 
+    
 
 
 
