@@ -35,22 +35,22 @@ class TokenUnit(object):
         self.copy_for_DR = False # have I been copied into the driver/recipient?
         self.copied_DR_index = None # what is the index of my copied unit in MEMORY (if I have been copied over; None, otherwise).
         self.sim_made = inferred_now # have I been created during a simulation. This flag takes the same value as inferred_now, but does not get reset when the new unit leaves newSet. For use in interpretting large batch sims (e.g., check all units made during simulation vs. those created by user).
-    
+
     def initialize_input(self, refresh): # initialize inputs to 0, and td_input to refresh.
         self.td_input = refresh
         self.bu_input = 0.0
         self.lateral_input = 0.0
         self.map_input = 0.0
         self.net_input = 0.0
-    
+
     def initialize_act(self):
         self.initialize_input(0.0)
         self.act = 0.0 # initialize act to 0.0.
-    
+
     def initialize_state(self):
-        self.initialize_act(0.0)
+        self.initialize_act()
         self.retrieved = False
-    
+
     def update_act(self, gamma, delta, HebbBias):
         self.net_input = self.td_input + self.bu_input + self.lateral_input + (self.map_input * HebbBias)
         delta_act = gamma * self.net_input * (1.1 - self.act) - (delta*self.act)
@@ -60,20 +60,20 @@ class TokenUnit(object):
             self.act = 1.0
         if self.act < 0.0:
             self.act = 0.0
-    
+
     def zero_laternal_input(self): # set lateral_input to 0 (to allow synchrony at different levels by 0-ing lateral inhibition at that level (e.g., to bind via synchrony, 0 lateral inhibition in POs).
         self.lateral_input = 0
-    
+
     def update_inhibitor_input(self): # update the input to my inhibitor by my current activation.
         self.inhibitor_input += self.act
-    
+
     def reset_inhibitor(self): # reset the inhibitor_input and act to 0.0.
         self.inhibitor_input = 0.0
         self.inhibitor_act = 0.0
 
 
 class Groups(TokenUnit):
-    def __init__(self, my_name, analog, inferred_now, myanalog, myGroupLayer):
+    def __init__(self, my_name, my_set, analog, inferred_now, myanalog, myGroupLayer):
         TokenUnit.__init__(self, my_name, my_set, analog, inferred_now, myanalog) # default init for all tokens.
         self.my_type = 'Group'
         self.myGroupLayer = myGroupLayer # the group layer I am at. If I take Ps as children, then I am at level 1, otherwise, I am at level of my child Groups + 1.
@@ -83,20 +83,20 @@ class Groups(TokenUnit):
         self.myRBs = [] # RBs to which I am connected. Initialized to empty. For Groups talking single-place pred structures as arguments.
         self.mySemantics = [] # Links to my semantic units: Inialized to empty.
         self.inhibitorThreshold = 'NA' ######### NOTE: THIS MIGHT NEED TO BE CHANGED LATER.
-    
+
     def get_index(self, memory):
         self.my_index = memory.Groups.index(self)
-    
+
     def update_inhibitor_act(self):
         if self.inhibitor_input >= self.inhibitorThreshold:
             self.inhibitor_act = 1
-    
+
     def update_input_driver(self, memory, asDORA):
         # sources of input:
         # Exitatory: td (Groups above me), bu (my Ps or Groups below me).
         # Inhibitory: lateral (other Group units in same layer as me*3), inhibitor.
         pass
-    
+
     def update_input_recipient(self, memory, asDORA, phase_set, lateral_input_level):
         # sources of input:
         # Exitatory: td (Groups above me), bu (my Ps or Groups below me, my semantics), mapping input.
@@ -113,13 +113,13 @@ class PUnit(TokenUnit):
         self.myGroups = [] # Groups I am a part of: initialized to empty.
         self.mode = 0 # as default mode is neutral.
         self.inhibitorThreshold = 440 ######### NOTE: THIS MIGHT NEED TO BE CHANGED LATER.
-    
+
     def get_index(self, memory):
         self.my_index = memory.Ps.index(self)
-    
+
     def initialize_Pmode(self): # initialize my mode back to neutral.
         self.mode = 0
-    
+
     def get_Pmode(self): # set my P mode.
         # set Pmode to 1 (Parent) if input from my RBs below me is greater than input from RBs above me, set Pmode to -1 (child) if input from RBs above me is greater than input from RBs below me, and set Pmode to 0 (neutral) otherwise.
         # get the input from RBs below me (.myRBs) and RBs above me (.myParentRBs).
@@ -135,11 +135,11 @@ class PUnit(TokenUnit):
             self.mode = -1
         else:
             self.mode = 0
-    
+
     def update_inhibitor_act(self):
         if self.inhibitor_input >= self.inhibitorThreshold:
             self.inhibitor_act = 1
-    
+
     def update_input_driver_parent(self, memory, asDORA):
         # P units in parent mode:
         # sources of input:
@@ -158,7 +158,7 @@ class PUnit(TokenUnit):
             # if the P is in parent and is not me, then add inhibitory input.
             if myP.mode == 1 and myP is not self:
                 self.lateral_input -= myP.act*3
-    
+
     def update_input_driver_child(self, memory, asDORA):
         # P units in child mode:
         # sources of input:
@@ -191,7 +191,7 @@ class PUnit(TokenUnit):
                     # if same_RB is false, get inhibition from the myPO.
                     if not same_RB:
                         self.lateral_input -= myPO.act
-    
+
     def update_input_recipient_parent(self, memory, asDORA, phase_set, lateral_input_level):
         # P units in parent mode:
         # sources of input:
@@ -220,7 +220,7 @@ class PUnit(TokenUnit):
                 self.lateral_input -= myP.act*lateral_input_level
         # from my inhibitor.
         self.lateral_input -= self.inhibitor_act*10
-    
+
     def update_input_recipient_child(self, memory, asDORA, phase_set, lateral_input_level):
         # Units in child mode:
         # Units in parent mode:
@@ -243,7 +243,7 @@ class PUnit(TokenUnit):
         # from other P units in child mode.
         for myP in memory.recipient.Ps:
             if myP.mode == -1 and myP is not self:
-                self.lateral_input == myP.act*lateral_input_level
+                self.lateral_input = myP.act*lateral_input_level
         # if in DORA mode, from PO units not in the same RB as me, and from PO units in the same RB as me*3.
         for myPO in memory.recipient.POs:
             if asDORA:
@@ -272,20 +272,20 @@ class RBUnit(TokenUnit):
         self.myChildP = [] # eventually connections to my child P unit: Initialized to None.
         self.timesFired = 0.0
         self.inhibitorThreshold = 220 ######### NOTE: THIS MIGHT NEED TO BE CHANGED LATER.
-    
+
     def get_index(self, memory):
         self.my_index = memory.RBs.index(self)
-    
+
     def initialize_timesFired(self):
         self.timesFired = 0.0
-    
+
     def update_timesFired(self): # update my timesFired.
         self.timesFired += 1 # also add 1 to times fired.
-    
+
     def update_inhibitor_act(self):
         if self.inhibitor_input >= self.inhibitorThreshold:
             self.inhibitor_act = 1
-    
+
     def update_input_driver(self, memory, asDORA):
         # update RB inputs:
         # sources of input:
@@ -309,7 +309,7 @@ class RBUnit(TokenUnit):
                 self.lateral_input -= myRB.act*3
         # get lateral inhibition from my inhibitor.
         self.lateral_input -= self.inhibitor_act*10
-    
+
     def update_input_recipient(self, memory, asDORA, phase_set, lateral_input_level):
         # update RB inputs:
         # Units in parent mode:
@@ -355,14 +355,14 @@ class POUnit(TokenUnit):
         self.semNormalization = None # here's where you'll store information on the number of semantics for semantic normalization.
         self.max_sem_weight = None # here's where you'll store information on my maximum semantic weight.
         self.inhibitorThreshold = 110 ######### NOTE: THIS MIGHT NEED TO BE CHANGED LATER.
-    
+
     def get_index(self, memory):
         self.my_index = memory.POs.index(self)
-    
+
     def update_inhibitor_act(self):
         if self.inhibitor_input >= self.inhibitorThreshold:
             self.inhibitor_act = 1
-    
+
     def update_input_driver(self, memory, asDORA):
         # update PO inputs:
         # sources of input:
@@ -389,13 +389,13 @@ class POUnit(TokenUnit):
                     self.lateral_input -= myPO.act*3
         # get lateral inhibition from my inhibitor.
         self.lateral_input -= self.inhibitor_act*10
-    
+
     def update_input_recipient(self, memory, asDORA, phase_set, lateral_input_level, ignore_object_semantics=False):
         # update PO inputs:
         # if you are inferred, just set input = 10, otherwise, update normally.
         # NOTE: Why did I bother with setting inferred POs to high input?
         if self.inferred:
-            # NOTE: Right now this bit of code is a place holder for setting the net_input of newly inferred units. The thinking is that it is possible that being able to do so might be useful in the future, although I'm getting less and less certain that this ability will be important at all. Nevertheless, it's still here just in case. 
+            # NOTE: Right now this bit of code is a place holder for setting the net_input of newly inferred units. The thinking is that it is possible that being able to do so might be useful in the future, although I'm getting less and less certain that this ability will be important at all. Nevertheless, it's still here just in case.
             #self.net_input = 10.0
             pass
         else: # update normally.
@@ -425,8 +425,8 @@ class POUnit(TokenUnit):
             # mapping input.
             # mapping input is for each similar token unit in the driver, 3*(driver.act*mapping_weight) - max(mapping_weight_driver_unit) - max(own_mapping_weight).
             for mappingConnection in self.mappingConnections:
-                # get mapping input only from PO tokens that are in the same mode as I am (i.e., preds get input from preds, and objs get input from objs). 
-                if mappingConnection.driverToken.predOrObj == self.predOrObj: 
+                # get mapping input only from PO tokens that are in the same mode as I am (i.e., preds get input from preds, and objs get input from objs).
+                if mappingConnection.driverToken.predOrObj == self.predOrObj:
                     self.map_input += (3*(mappingConnection.weight*mappingConnection.driverToken.act) - (self.max_map*mappingConnection.driverToken.act) - (mappingConnection.driverToken.max_map*mappingConnection.driverToken.act))
             # get inhibitory input.
             # lateral inhibition.
@@ -441,11 +441,11 @@ class POUnit(TokenUnit):
                         self.lateral_input -= myPO.act*(lateral_input_level*2) # the 2 here is a place-holder for a multiplier for within RB inhibition (right now it is a bit higher than between RB inhibition).
                 else:
                     # by default, POs not connected to your RB inhibit you), however, if ignore_object_semantics==True, then PO preds only inhibit other PO preds, and PO objects only inhibit other PO objects.
-                    if ignore_object_semantics==True:
+                    if ignore_object_semantics:
                         if (myPO is not self) and (myPO.predOrObj == self.predOrObj):
-                    	    self.lateral_input -= myPO.act*lateral_input_level
+                            self.lateral_input -= myPO.act*lateral_input_level
                     else:
-                        if (myPO is not self):
+                        if myPO is not self:
                             self.lateral_input -= myPO.act*lateral_input_level
             # all Ps in child mode.
             for myP in memory.recipient.Ps:
@@ -459,7 +459,7 @@ class POUnit(TokenUnit):
                                 sameRB = True
                                 break
                         if not sameRB:
-                            self.lateral_input -=P.act*3
+                            self.lateral_input -= myP.act*3
                     else: # If I'm in LISA mode.
                         # get inhibitory input from that P if I am an object.
                         if self.predOrObj == 0:
@@ -474,7 +474,7 @@ class POUnit(TokenUnit):
             # my inhibitor.
             self.lateral_input -= self.inhibitor_act*10
             # for debugging.
-    
+
     # NOTE THAT THIS FUNCTION MIGHT NEED SOME WORK!
     def get_weight_length(self): # how many semantics am I connected to with weight > .1? Used to normalize input so not affected by raw number of semantics.
         # find out how many semntics I'm connected to with weight greater than .1.
@@ -484,7 +484,7 @@ class POUnit(TokenUnit):
             if link.weight > .1:
                 my_weight_length += link.weight
         self.semNormalization = my_weight_length
-    
+
     # function to semantics I am most strongly connected to.
     def get_max_semantic_weight(self):
         # find the my maximum semantic connection weight.
@@ -500,7 +500,7 @@ class Semantic(object):
         self.my_type = 'semantic'
         self.dimension = dimension # if I code a dimension, which dimension?; else = None.
         self.amount = amount # if I am a metric dimension, my value on that dimension; else = None.
-        if ont_status == None:
+        if ont_status is None:
             self.ont_status = 'state'
         else:
             self.ont_status = ont_status # what is my ontological status? Am I a 'state' (i.e., an indication of the existence of a property) or a 'value' (i.e., a specific aboslute value on some dimension)? NOTE: comparative semantics like more/less/same/different have ont_status of 'SDM'.
@@ -508,7 +508,8 @@ class Semantic(object):
         self.max_sem_input = 0.0 # the maximum input to any semantic unit in the network.
         self.act = 0.0
         self.myPOs = [] # initialize to empty. Later it will have Links to POs.
-    
+        self.semConnect = None # where links to other semantics are kept. Initialized to None.
+
     def update_input(self, memory, ignore_object_semantics=False, ignore_memory_semantics=False):
         self.myinput = 0.0
         for Link in self.myPOs:
@@ -516,31 +517,31 @@ class Semantic(object):
             if Link.myPO.set != 'newSet':
                 if ignore_memory_semantics:
                     if Link.myPO.set != 'memory':
-                        if ignore_object_semantics == True:
+                        if ignore_object_semantics:
                             if Link.myPO.predOrObj==1:
                                 self.myinput += Link.myPO.act * Link.weight
                         else:
                             self.myinput += Link.myPO.act * Link.weight
                 else:
-                    if ignore_object_semantics == True:
+                    if ignore_object_semantics:
                         if Link.myPO.predOrObj==1:
                             self.myinput += Link.myPO.act * Link.weight
                     else:
                         self.myinput += Link.myPO.act * Link.weight
-    
+
     def set_max_input(self, max_input):
         self.max_sem_input = max_input
-    
+
     def update_act(self):
         if self.max_sem_input > 0:
             self.act = self.myinput / self.max_sem_input
         else:
             self.act = 0.0
-    
+
     def initializeSem(self):
         self.act = 0.0
         self.myinput = 0.0
-    
+
     def initialize_input(self, refresh):
         self.myinput = refresh
 
@@ -567,7 +568,7 @@ class mappingHypothesis(object):
         self.hypothesis = 0.0
         self.max_hyp = 0.0 # used for divisive normalization duirng mappingConnection update. Initialize to 0.0.
         self.myMappingConnection = mappingConnection
-    
+
     def update_hyp(self, memory):
         # if you're updating Ps, make sure they are in the same mode before updating, and if you are updating POs, make sure that they are the same type (pred/object) before updating.
         if self.driverToken.my_type == 'P':
@@ -584,13 +585,13 @@ class mappingHypothesis(object):
 class localInhibitor(object):
     def __init__(self):
         self.act = 0.0
-    
+
     def checkDriverPOs(self, memory):
         for myPO in memory.driver.POs:
             if myPO.inhibitor_act == 1.0:
                 # set inhibitorActivation to 1.0.
                 self.act = 1.0
-    
+
     def fire_local_inhibitor(self,memory):
         # clear driver and recipient PO and semantic activation.
         for myPO in memory.driver.POs:
@@ -606,14 +607,14 @@ class localInhibitor(object):
 class globalInhibitor(object):
     def __init__(self):
         self.act = 0.0
-    
+
     def checkDriverRBs(self, memory):
         fire_inhibitor = False
         for myRB in memory.driver.RBs:
             if myRB.inhibitor_act == 1.0:
                 # clear driver and recipient PO and semantic activation.
                 self.act = 1.0
-    
+
     def fire_global_inhibitor(self, memory):
         # set the activation and input of all driver and recipient Ps, RBs and POs, and all semantics to 0.
         for myP in memory.driver.Ps:
@@ -644,7 +645,7 @@ class Analog(object):
         self.total_act = 0.0
         self.num_units = None
         self.normalised_retrieval_act = None
-    
+
     # function to sum up the number of token units in the analog. Used for retrieval routine.
     def sum_num_units(self):
         self.num_units = 0
@@ -716,7 +717,7 @@ class basicSimNode(object):
         self.input = 0.0
         self.lateral_loss = 0.0 # field used for storing lateral inhibition.
         self.threshold = sorted([random.random(), random.random()]) # start with an initially random threshold.
-    
+
     def update_input(self, similaritynet, similarity_ratio):
         # get my input from the similarity ratio:
         if self.threshold[0] < similarity_ratio < self.threshold[1]:
@@ -724,31 +725,31 @@ class basicSimNode(object):
         for node in similaritynet.nodes:
             if node is not self:
                 self.lateral_loss += node.act
-    
+
     def do_tuning(self, similarity_ratio):
-        # move my threshold closer to the value of similarity_ratio. 
+        # move my threshold closer to the value of similarity_ratio.
         # let the lower threshold state move towards similarity_ratio
         delta_thresh_low = pow((similarity_ratio - self.threshold[0]), 2)
         delta_thresh_high = pow((self.threshold[1] - similarity_ratio), 2)
         self.threshold[0] += delta_thresh_low
         self.threshold[1] -= delta_thresh_high
-    
+
     def update_act(self, gamma, delta):
         # take away the .lateral_loss.
         self.input -= self.lateral_loss
         # update as a simple leaky integrator unit.
-        delta_act = gamma * (self.input) * (1.1 - self.act) - (delta*self.act)
+        delta_act = gamma * self.input * (1.1 - self.act) - (delta * self.act)
         self.act += delta_act
         # hard limit activation to between 0.0 and 1.0.
         if self.act > 1.0:
             self.act = 1.0
         if self.act < 0.0:
             self.act = 0.0
-    
+
     def clear_input(self):
         self.input = 0.0
         self.lateral_loss = 0.0
-    
+
     def clear_all(self):
         self.input = 0.0
         self.act = 0.0
@@ -757,12 +758,12 @@ class basicSimNode(object):
 class similarityNet(object):
     def __init__(self):
         self.nodes = []
-    
+
     def update_inputs(self, similarity_ratio):
         # update the input of all my nodes.
         for node in self.nodes:
             node.update_input(self, similarity_ratio)
-    
+
     def update_acts(self, gamma, delta):
         # update the act of all my nodes.
         for node in self.nodes:
@@ -770,7 +771,7 @@ class similarityNet(object):
         # now clear the inputs.
         for node in self.nodes:
             node.clear_input()
-    
+
     def tune_network(self, similarity_ratio):
         # tune the threshold of the winning node in the network.
         high_act = 0.0
@@ -794,7 +795,7 @@ class basicEntNode(object):
         self.am_output = am_output # True if I am an output (or higher-level--i.e., object) unit.
         self.am_input = am_input # True if I am an input (or lower-level--i.e., semantic) unit.
         self.connections = connections
-    
+
     def update_input(self, entropynet):
         # get input from each of my connections.
         # the input to output nodes is divisively normalised by the total activity of the input units.
@@ -819,7 +820,7 @@ class basicEntNode(object):
             for unit in entropynet.outputs:
                 if unit is not self:
                     self.lateral_loss += unit.act
-    
+
     def update_act(self, gamma, delta):
         # take away the .lateral_loss.
         self.input -= self.lateral_loss
@@ -831,11 +832,11 @@ class basicEntNode(object):
             self.act = 1.0
         if self.act < 0.0:
             self.act = 0.0
-    
+
     def clear_input(self):
         self.input = 0.0
         self.lateral_loss = 0.0
-    
+
     def clear_all(self):
         self.input = 0.0
         self.act = 0.0
@@ -851,24 +852,24 @@ class basicTimingNode(object):
         self.higher_connections = higher_connections
         self.lateral_connections = lateral_connections
         self.lower_connections = lower_connections
-    
+
     def update_input(self):
-        # initialize input. 
+        # initialize input.
         self.input = 0.0
-        # for each node to which I am upwardly connected, get input. 
+        # for each node to which I am upwardly connected, get input.
         for connection in self.higher_connections:
             self.input += connection.weight * connection.myhighernode.act
-        # for each node to which I am laterally connected, get input. 
+        # for each node to which I am laterally connected, get input.
         # REMEMBER: lateral connections aren't links, they are actually just a list of all lateral units as all lateral inputs are inhbitory
         for unit in self.lateral_connections:
             self.input += -3.0 * unit.act
-        # for each node to which I am downwardly connected, get input. 
+        # for each node to which I am downwardly connected, get input.
         for connection in self.lower_connections:
             self.input += connection.weight * connection.mylowernode.act
-        # and subtract refraction. 
+        # and subtract refraction.
         if self.time_since_fired is not None:
             self.input -= 10.0/(1 + (pow(math.e, (self.time_since_fired - 110))))
-    
+
     def update_act(self, gamma, delta):
         # update as a simple leaky integrator unit.
         delta_act = gamma * self.input * (1.1 - self.act) - (delta*self.act)
@@ -876,24 +877,24 @@ class basicTimingNode(object):
         # hard limit activation to between 0.0 and 1.0.
         if self.act > 1.0:
             self.act = 1.0
-        if self.act < 0.0:
+        elif self.act < 0.0:
             self.act = 0.0
-        # update my time_since_fired field if applicable. 
+        # update my time_since_fired field if applicable.
         if self.time_since_fired:
             self.time_since_fired += 1
-    
+
     def adjust_links(self):
-        # for all of my links to semantic units (i.e., lower_connections), update weights according to simple Hebbian rule with a growth parameter (=.2). 
+        # for all of my links to semantic units (i.e., lower_connections), update weights according to simple Hebbian rule with a growth parameter (=.2).
         for link in self.lower_connections:
             link.weight += self.act*(link.mylowernode.act - link.weight)*.2
-    
+
     def clear_input(self):
         self.input = 0.0
-    
+
     def clear_inputandact(self):
         self.input = 0.0
         self.act = 0.0
-    
+
     def clear_all(self):
         self.input = 0.0
         self.act = 0.0
@@ -905,35 +906,35 @@ class basicGateNode(object):
     def __init__(self, name, input_nodes, output_nodes):
         self.name = name
         self.act = 0.0
-        self.input_nodes = input_nodes # nodes that I gate the input from. 
-        self.output_nodes = output_nodes # nodes that I output to. 
-        self.gate = False # my gate is open (True or False). 
-    
+        self.input_nodes = input_nodes # nodes that I gate the input from.
+        self.output_nodes = output_nodes # nodes that I output to.
+        self.gate = False # my gate is open (True or False).
+
     def update_input(self):
         go_on = True
         for unit in self.input_nodes:
             if unit < 0.1:
                 go_on = False
-        if go_on == True:
+        if go_on:
             self.gate = True
-    
+
     def update_act(self):
-        if self.gate == True:
+        if self.gate:
             self.act = 1.0
             self.gate = False
         else:
             self.act = 0.0
-        # set the .gate field to False as you have now fired. 
+        # set the .gate field to False as you have now fired.
         self.gate = False
-    
+
     def adjust_links(self):
-        # for all of my links to semantic units (i.e., lower_connections), update weights according to simple Hebbian rule with a growth parameter (=.2).  
+        # for all of my links to semantic units (i.e., lower_connections), update weights according to simple Hebbian rule with a growth parameter (=.2).
         for link in self.output_nodes:
             link.weight += self.act*(link.mylowernode.act - link.weight)*.2
-    
+
     def clear_input(self):
         self.gate = False
-    
+
     def clear_all(self):
         self.input = 0.0
         self.act = 0.0
@@ -942,32 +943,27 @@ class basicGateNode(object):
 
 # MLS semantic for mag cirucuit. 
 class MLS_sem(object):
-    def __init__(self,name, higher_connections, lateral_connections, lower_connections):
+    def __init__(self,name, higher_connections, lateral_connections):
         self.name = name
         self.act = 0.0
         self.input = 0.0
         self.max_sem_input = 0.0
         self.higher_connections = higher_connections
-        self.lateral_connections = lateral_connections
-        self.lower_connections = lower_connections
-    
+
     def update_input(self):
-        # initialise input. 
+        # initialise input.
         self.input = 0.0
-        # for each node to which I am upwardly connected, get input. 
+        # for each node to which I am upwardly connected, get input.
         for connection in self.higher_connections:
             self.input += connection.weight * connection.myhighernode.act
-        # for each node to which I am laterally connected, get input. 
+        # for each node to which I am laterally connected, get input.
         # REMEMBER: lateral connections aren't links, they are actually just a list of all lateral units as all lateral inputs are inhbitory
         #for unit in self.lateral_connections:
         #    self.input += -1.0 * unit.act
-        # for each node to which I am downwardly connected, get input. 
-        for connection in self.lower_connections:
-            self.input += connection.weight * connection.mylowernode.act
-    
+
     def set_max_sem_input(self, max_input):
         self.max_sem_input = max_input
-    
+
     def update_act(self):
         if self.max_sem_input > 0:
             self.act = self.input / self.max_sem_input
@@ -975,21 +971,167 @@ class MLS_sem(object):
             self.act = 0.0
         if self.act < 0:
             self.act = 0.0
-    
+
     def clear_input(self):
         self.input = 0.0
-    
+
     def clear_all(self):
         self.input = 0.0
         self.act = 0.0
-        
 
+# E nodes for neural entropy calculations with linear input functions. 
+class reg_E_Node(object):
+    def __init__(self, name, higher_connections, lateral_connections, lower_connections):
+        self.name = name
+        self.act = 0.0
+        self.input = 0.0
+        self.threshold = random.uniform(.4,.8)
+        self.time_since_fired = None
+        self.higher_connections = higher_connections
+        self.lateral_connections = lateral_connections
+        self.lower_connections = lower_connections
+
+    def update_input(self):
+        # initialize input.
+        self.input = 0.0
+        # for each node to which I am connected to, get inoput. 
+        for connection in self.higher_connections:
+            self.input += connection.weight * connection.myhighernode.act 
+        # for each node to which I am laterally connected, get input. 
+        # REMEMBER: lateral connections aren't links, they are actually just a list of all lateral units as all lateral inputs are inhbitory
+        for unit in self.lateral_connections:
+            if unit is not self:
+                self.input += -1.0 * unit.act
+        
+    def update_act(self):
+        # update as leaky sigmoidal unit. 
+        delta_act = 0.3*(1/(1+(pow(math.e, -10*(self.input - self.threshold))))) - (0.1*self.act)
+        self.act += delta_act
+        # hard limit activation to between 0.0 and 1.0.
+        if self.act > 1.0:
+            self.act = 1.0
+        elif self.act < 0.0:
+           self.act = 0.0
+    
+    def adjust_links(self):
+        # for all of my links to semantic units (i.e., lower_connections), update weights according to simple Hebbian rule with a growth parameter (=.2).
+        for link in self.lower_connections:
+            link.weight += self.act*(link.mylowernode.act - link.weight)*.2
+
+    def clear_input(self):
+        self.input = 0.0
+
+    def clear_input_and_act(self):
+        self.input = 0.0
+        self.act = 0.0
+
+    def clear_all(self):
+        self.input = 0.0
+        self.act = 0.0
+        self.time_since_fired = None
+
+# E nodes for neural entropy calculations with guassian input functions.
+class gaussian_E_Node(object):
+    def __init__(self, name, higher_connections, lateral_connections, lower_connections):
+        self.name = name
+        self.act = 0.0
+        self.input = 0.0
+        self.threshold = 0.5
+        self.time_since_fired = None
+        self.higher_connections = higher_connections
+        self.lateral_connections = lateral_connections
+        self.lower_connections = lower_connections
+
+    def update_input(self):
+        # initialize input.
+        self.input = 0.0
+        # for each node to which I am connected to, get input. 
+        for connection in self.higher_connections:
+            self.input += connection.weight * math.exp(-10*pow((connection.myhighernode.act - 0.5), 2))
+        # for each node to which I am laterally connected, get input. 
+        # REMEMBER: lateral connections aren't links, they are actually just a list of all lateral units as all lateral inputs are inhbitory
+        for unit in self.lateral_connections:
+            if unit is not self:
+                self.input += -1.0 * unit.act
+        
+    def update_act(self):
+        # update as sigmoidal unit. 
+        self.act = 1/(1+(pow(math.e, -10*(self.input - self.threshold))))
+    
+    def adjust_links(self):
+        # for all of my links to semantic units (i.e., lower_connections), update weights according to simple Hebbian rule with a growth parameter (=.2).
+        for link in self.lower_connections:
+            link.weight += self.act*(link.mylowernode.act - link.weight)*.2
+
+    def clear_input(self):
+        self.input = 0.0
+
+    def clear_input_and_act(self):
+        self.input = 0.0
+        self.act = 0.0
+
+    def clear_all(self):
+        self.input = 0.0
+        self.act = 0.0
+        self.time_since_fired = None
+
+# A nodes for neural netropy calculations. 
+class reg_A_Node(object):
+    def __init__(self, name, higher_connections, lateral_connections, lower_connections):
+        self.name = name
+        self.act = 0.0
+        self.input = 0.0
+        self.time_since_fired = None
+        self.threshold = 0.5
+        self.higher_connections = higher_connections
+        self.lateral_connections = lateral_connections
+        self.lower_connections = lower_connections
+
+    def update_input(self):
+        # initialize input.
+        self.input = 0.0
+        # for each node that i am connected to, get input. 
+        for connection in self.higher_connections:
+            self.input += connection.weight * connection.myhighernode.act 
+        # for each node to which I am laterally connected, get input. 
+        # REMEMBER: lateral connections aren't links, they are actually just a list of all lateral units as all lateral inputs are inhbitory
+        for unit in self.lateral_connections:
+            if unit is not self:
+                self.input += -1.0 * unit.act
+
+    def update_act(self):
+        # update as leaky sigmoidal unit. 
+        delta_act = 0.5*(1/(1+(pow(math.e, -10*(self.input - self.threshold))))) - (0.1*self.act)
+        self.act += delta_act
+        self.act = 1/(1+(pow(math.e, -10*(self.input - self.threshold))))
+        # hard limit activation to between 0.0 and 1.0.
+        if self.act > 1.0:
+            self.act = 1.0
+        elif self.act < 0.0:
+           self.act = 0.0
+
+    def adjust_links(self):
+        # for all of my links to semantic units (i.e., lower_connections), update weights according to simple Hebbian rule with a growth parameter (=.2).
+        for link in self.lower_connections:
+            link.weight += self.act*(link.mylowernode.act - link.weight)*.2
+
+    def clear_input(self):
+        self.input = 0.0
+
+    def clear_input_and_act(self):
+        self.input = 0.0
+        self.act = 0.0
+
+    def clear_all(self):
+        self.input = 0.0
+        self.act = 0.0
+        self.time_since_fired = None
 
 # simple link class for doing basic network computations (e.g., in entropy calculations). These links are uni-directional.
 class basicLink(object):
     def __init__(self, myhighernode, mylowernode, weight):
-        self.myhighernode = myhighernode # the node to which I am upwardly connnected (the node which takes the input).
-        self.mylowernode = mylowernode # the node to which I am downwardly connnected (the node which gives the input).
+        self.myhighernode = myhighernode # the node to which I am upwardly connnected. 
+        self.mylowernode = mylowernode # the node to which I am downwardly connnected. 
         self.weight = weight # the weight between the two nodes I connect.
 
 
@@ -999,6 +1141,7 @@ class entropyNet(object):
         self.inputs = []
         self.outputs = []
         self.connections = []
+
 
 
 
