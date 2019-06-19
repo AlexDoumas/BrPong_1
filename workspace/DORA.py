@@ -16,9 +16,9 @@ path_name = 'pythonDORA/currentVers'  # current path DORA's looking in.
 # Parameters.
 # create a big dictionary called parameters, with all parameters as fields.
 # eta is for using for updating mapping connections.
-# run_order is an array indicating the order of operations for a learning phase (cdr=clear driver and recipient, cr=clear recipient, selectTokens=select token units from memory to place in the driver (the selection of tokens is by analog (i.e., a specific analog is chosen, and all tokens from that analog are placed in the driver)), selectP=select a P at random from memory to place in the driver, , r=retrieval, m=map, p=predicate, f=form new relation, g=relational generalization, s=schema induction, 'b'=between group entropy ops, 'w'=within group entropy ops, 'wp'=within group entropy ops for preds only, (NOTE: b, w, and wp operations are newer to the theory and therefore listed after the old DORA operations; in reality accourdin to the theory, they should occur after retrieval and before mapping), c=clear results, cl=limited clear results (just inferences and newSet), wdr= write the current state of the driver and recipient to output file, wn=write current state of the network to output file).
+# run_order is an array indicating the order of operations for a learning phase (cdr=clear driver and recipient, cr=clear recipient, selectTokens=select token units from memory to place in the driver (the selection of tokens is by analog (i.e., a specific analog is chosen, and all tokens from that analog are placed in the driver)), selectP=select a P at random from memory to place in the driver, , r=retrieval, m=map, p=predicate, f=form new relation, g=relational generalization, s=schema induction, 'b'=between group entropy ops, 'w'=within group entropy ops, 'wp'=within group entropy ops for preds only, (NOTE: b, w, and wp operations are newer to the theory and therefore listed after the old DORA operations; in reality according to the theory, they should occur after retrieval and before mapping) 'co'=compression (NOTE: compression is an old part of the theory covered in Doumas, 2005, but newly implemented for general DORA), c=clear results, cl=limited clear results (just inferences and newSet), wdr= write the current state of the driver and recipient to output file, wn=write current state of the network to output file).
 # ignore_object_semantics is a parameter used when running in LISA mode. It allows DORA to downweight object semantics when multiple propositions are in the driver together. NOTE: I'm not sure if placing this item in the parameters dict is the best long-term solution. Likely, you'll want to integrate switching ignore_object_semantics automatically in the model based on context.
-parameters = {'asDORA': True, 'gamma': 0.3, 'delta': 0.1, 'eta': 0.9, 'HebbBias': 0.5,'bias_retrieval_analogs': True, 'use_relative_act': True, 'run_order': ['cdr', 'selectTokens', 'r', 'wp', 'm', 'p', 'f', 's', 'c'], 'run_cyles': 5000, 'write_on_iteration': 100, 'firingOrderRule': 'random', 'strategic_mapping': False, 'ignore_object_semantics': False, 'ignore_memory_semantics': True, 'mag_decimal_precision': 0, 'dim_list': ['height', 'width', 'depth', 'size'], 'exemplar_memory': False, 'recent_analog_bias': True, 'lateral_input_level': 1, 'screen_width': 1200, 'screen_height': 700, 'doGUI': True, 'GUI_update_rate': 1, 'starting_iteration': 0}
+parameters = {'asDORA': True, 'gamma': 0.3, 'delta': 0.1, 'eta': 0.9, 'HebbBias': 0.5,'bias_retrieval_analogs': True, 'use_relative_act': True, 'run_order': ['cdr', 'selectTokens', 'r', 'wp', 'm', 'p', 'f', 's', 'c'], 'run_cyles': 5000, 'write_on_iteration': 100, 'firingOrderRule': 'random', 'strategic_mapping': False, 'ignore_object_semantics': False, 'ignore_memory_semantics': True, 'mag_decimal_precision': 0, 'dim_list': ['height', 'width', 'depth', 'size'], 'exemplar_memory': False, 'recent_analog_bias': True, 'lateral_input_level': 1, 'screen_width': 1200, 'screen_height': 700, 'doGUI': True, 'GUI_update_rate': 50, 'starting_iteration': 0}
 
 # do a run_on_iphone check and set show_GUI to false if running on iphone.
 if run_on_iphone:
@@ -103,7 +103,7 @@ class MainMenu(object):
                 try:
                     self.parameterFile = open(pfile_to_load, 'r')
                     try:
-                        exec (self.parameterFile)
+                        exec self.parameterFile
                         self.parameters = parameters
                     except SyntaxError:
                         print '\nEntered parameter file is formatted incorrectly.'
@@ -126,7 +126,7 @@ class MainMenu(object):
                         symstring += line
                     do_run = True
                     try:
-                        exec (symstring)
+                        exec symstring
                         self.sym = symProps
                     except:
                         do_run = False
@@ -138,7 +138,7 @@ class MainMenu(object):
                         for line in self.parameterFile:
                             parameter_string += line
                         try:
-                            exec (parameter_string)
+                            exec parameter_string
                         except:
                             print '\nYour loaded paramter file is wonky. \nI am going to run anyway, but with preset parameters.'
                             keep_running = raw_input('Would you like to continue? (Y) or any key to exit>')
@@ -248,7 +248,7 @@ class RunMenu(object):
                 # allow user to run DORA.
                 go_on_run = True
                 while go_on_run:
-                    print '\n(R)etrieve; (M)ap; (P)redicate; (F)orm new relation; (G)eneralize; (S)chematize, (B)etween set entropy operations, (W)ithin set entropy operations, (C)lear inferences/mappings, (U)pdate names'
+                    print '\n(R)etrieve; (M)ap; (P)redicate; (F)orm new relation; (G)eneralize; (S)chematize, (B)etween set entropy operations, (W)ithin set entropy operations, (Co)mpression, (C)lear inferences/mappings, (U)pdate names'
                     print '(Ch)ange Driver/Recipient'
                     print '(Sw)ap DORA and LISA mode. Currently asDORA is', self.parameters['asDORA']
                     print '(Ig)nore object semantics (a LISA property that only works in LISA mode). Currently ignore_object_semantics is', self.parameters['ignore_object_semantics']
@@ -275,12 +275,12 @@ class RunMenu(object):
                                 self.network.asDORA = True
                     elif run_command.upper() == 'IG':
                         # try to change the ignore_object_semantics parameter.
-                        if self.parameters['ignore_object_semantics'] == True:
+                        if self.parameters['ignore_object_semantics']:
                             self.parameters['ignore_object_semantics'] = False
                             self.network.ingore_object_semantics = False
                         else:
                             # 'ignore_object_semantics' parameter is False, check if you're in LISA mode, if so, change ignore_object_semantics to True, else give an error message indicating that ignore_object_semantics can only be True in LISA mode.
-                            if self.parameters['asDORA'] == False:
+                            if not self.parameters['asDORA']:
                                 self.parameters['ignore_object_semantics'] = True
                                 self.network.ignore_object_semantics = True
                             else:
@@ -502,7 +502,7 @@ class RunMenu(object):
                         self.network.do_entropy_ops_within(pred_only=False)
                     elif run_command.upper() == 'P':
                         # do predication.
-                        # first check if predication is ok.
+                        # check if predication is ok.
                         pred_ok = basicRunDORA.predication_requirements(self.network.memory)
                         if pred_ok:
                             self.network.do_predication()
@@ -511,7 +511,7 @@ class RunMenu(object):
                             raw_input('Press Enter to return to Run_Menu>')
                     elif run_command.upper() == 'F':
                         # do form new relation.
-                        # first check if formation is ok.
+                        # check if formation is ok.
                         form_ok = basicRunDORA.rel_form_requirements(self.network.memory)
                         if form_ok:
                             self.network.do_rel_form()
@@ -520,7 +520,7 @@ class RunMenu(object):
                             raw_input('Press Enter to return to Run_Menu>')
                     elif run_command.upper() == 'G':
                         # do generalization.
-                        # first check if generalization is ok.
+                        # check if generalization is ok.
                         gen_ok = basicRunDORA.rel_gen_requirements(self.network.memory)
                         # do generalisation (or don't, if gen_ok is False)
                         if gen_ok:
@@ -530,7 +530,7 @@ class RunMenu(object):
                             raw_input('Press Enter to return to Run_Menu>')
                     elif run_command.upper() == 'S':
                         # do schematization.
-                        # first check if schematization is ok.
+                        # check if schematization is ok.
                         schema_ok = basicRunDORA.schema_requirements(self.network.memory)
                         # do schematisation (or don't, if schema_ok is False)
                         if schema_ok:
@@ -538,6 +538,9 @@ class RunMenu(object):
                         else:
                             print '\nThe requirements for schematisation are not met. \nThere are non-mapping items in driver or recipient.'
                             raw_input('Press Enter to return to Run_Menu>')
+                    elif run_command.upper() == 'CO':
+                        # do compreession.
+                        self.network.do_compression()
                     elif run_command.upper() == 'E':
                         go_on_run = False
                     else:
@@ -600,7 +603,7 @@ class ctrlStruct(object):
     # main run function.
     def runCycle(self, cycle):
         # function to run a full run cycle in the run order given in parameters['run_order'].
-        # runCycle options: [cdr, cr, selectTokens, r, m, p, f, g, s, c, wdr, wn]. See below for details.
+        # runCycle options: [cdr, cr, selectTokens, r, m, p, f, g, s, co, c, wdr, wn]. See below for details.
         # get all the indeces for the tokens.
         self.network.memory = basicRunDORA.indexMemory(self.network.memory)
         for run_item in self.parameters['run_order']:
@@ -618,7 +621,7 @@ class ctrlStruct(object):
                 # select between 1-3 analogs from memory, and put them in the driver.
                 num_analogs = random.choice([1])
                 # select randomly from all of memory or bias towards recently learned items.
-                if self.network.recent_analog_bias == True: # there is a bias towards recently learned items.
+                if self.network.recent_analog_bias: # there is a bias towards recently learned items.
                     for i in range(num_analogs):
                         # select an analog with a bias towards more recent analogs (exact probabilities specified in code below).
                         # select a random number.
@@ -773,6 +776,10 @@ class ctrlStruct(object):
                         self.network.do_schematization()
                 else:
                     print 'Could not do schematization on cycle ', cycle, '\n'
+            elif run_item == 'co':
+                self.network.memory = basicRunDORA.findDriverRecipient(self.network.memory)
+                # do compression.
+                self.network.do_compression()
             elif run_item == 'c':
                 # clear all mapping and madeUnit fields and also clear driver, recipient, and newSet.
                 self.network.memory = basicRunDORA.reset_inferences(self.network.memory)
@@ -787,7 +794,7 @@ class ctrlStruct(object):
                 # do a limited clear (madeUnits and inferences and newSet).
                 self.network.memory = basicRunDORA.reset_inferences(self.network.memory)
                 self.network.memory = basicRunDORA.reset_maker_made_units(self.network.memory)
-                self.memory.network.newSet.Ps, self.network.memory.newSet.RBs, self.network.memory.newSet.POs = [], [], []
+                self.network.memory.newSet.Ps, self.network.memory.newSet.RBs, self.network.memory.newSet.POs = [], [], []
                 print '(Limited clear: newSet items cleared on cycle ', str(cycle)+')\n' 
             elif run_item == 'wdr':
                 # write the current state of the driver and recipient to the output file.
@@ -810,23 +817,23 @@ def write_dr(memory, write_file, cycle):
     memory = basicRunDORA.get_max_map_units(memory)
     for myP in memory.driver.Ps:
         if myP.max_map_unit:
-            P_string = 'P: ' + myP.name + ' -- ' + myP.max_map_unit.name + ' -- mapping_weight=' + str(P.max_map)
+            P_string = 'P: ' + myP.name + ' -- ' + myP.max_map_unit.name + ' -- mapping_weight=' + str(myP.max_map)
         else:
-            P_string = 'P: ' + myP.name + ' -- ' + 'NONE' + ' -- mapping_weight=' + str(P.max_map)
+            P_string = 'P: ' + myP.name + ' -- ' + 'NONE' + ' -- mapping_weight=' + str(myP.max_map)
         write_file.write(P_string)
         write_file.write('\n')
     for myRB in memory.driver.RBs:
         if myRB.max_map_unit:
-            RB_string = 'RB: ' + myRB.name + ' -- ' + myRB.max_map_unit.name + ' -- mapping_weight=' + str(RB.max_map)
+            RB_string = 'RB: ' + myRB.name + ' -- ' + myRB.max_map_unit.name + ' -- mapping_weight=' + str(myRB.max_map)
         else:
-            RB_string = 'RB: ' + myRB.name + ' -- ' + 'NONE' + ' -- mapping_weight=' + str(RB.max_map)
+            RB_string = 'RB: ' + myRB.name + ' -- ' + 'NONE' + ' -- mapping_weight=' + str(myRB.max_map)
         write_file.write(RB_string)
         write_file.write('\n')
     for myPO in memory.driver.POs:
         if myPO.max_map_unit:
-            PO_string = 'PO: ' + myPO.name + ' -- ' + myPO.max_map_unit.name + ' -- mapping_weignt=' + str(PO.max_map)
+            PO_string = 'PO: ' + myPO.name + ' -- ' + myPO.max_map_unit.name + ' -- mapping_weignt=' + str(myPO.max_map)
         else:
-            PO_string = 'PO: ' + myPO.name + ' -- ' + 'NONE' + ' -- mapping_weignt=' + str(PO.max_map)
+            PO_string = 'PO: ' + myPO.name + ' -- ' + 'NONE' + ' -- mapping_weignt=' + str(myPO.max_map)
         write_file.write(PO_string)
         write_file.write('\n')
     # now write the term_map_display.
@@ -840,19 +847,19 @@ def write_dr(memory, write_file, cycle):
         P_counter += 1
         # print my name, then info for each of my RBs.
         write_file.write('\n')
-        term_write_P(P, P_counter, write_file)
+        term_write_P(myP, P_counter, write_file)
     # draw each RB that has no Ps above it.
     RB_counter = 0
     for myRB in memory.driver.RBs:
         RB_counter += 1
         # if that RB has no Ps above it (i.e., myRB.myParentPs is empty), then draw it.
-        term_write_RB(RB, RB_counter, write_file)
+        term_write_RB(myRB, RB_counter, write_file)
     # for draw each PO that has no RBs.
     PO_counter = 0
     for myPO in memory.driver.POs:
         PO_counter += 1
         # if that PO has no RBs (i.e., myPO.myRBs is empty), then draw it.
-        term_write_PO(PO, PO_counter, write_file)
+        term_write_PO(myPO, PO_counter, write_file)
     write_file.write('\n')
     write_file.write('RECIPIENT:\n')
     P_counter = 0
@@ -860,19 +867,19 @@ def write_dr(memory, write_file, cycle):
         P_counter += 1
         # print my name, then info for each of my RBs.
         write_file.write('\n')
-        term_write_P(P, P_counter, write_file)
+        term_write_P(myP, P_counter, write_file)
     # draw each RB that has no Ps above it.
     RB_counter = 0
     for myRB in memory.recipient.RBs:
         RB_counter += 1
         # if that RB has no Ps above it (i.e., myRB.myParentPs is empty), then draw it.
-        term_write_RB(RB, RB_counter, write_file)
+        term_write_RB(myRB, RB_counter, write_file)
     # for draw each PO that has no RBs.
     PO_counter = 0
     for myPO in memory.recipient.POs:
         PO_counter += 1
         # if that PO has no RBs (i.e., myPO.myRBs is empty), then draw it.
-        term_write_PO(PO, PO_counter, write_file)
+        term_write_PO(myPO, PO_counter, write_file)
 
 # basically, write DORA_GUI.term_network_display for memory to write_file.
 def write_network(memory, write_file, cycle):
@@ -883,22 +890,22 @@ def write_network(memory, write_file, cycle):
     for myP in memory.Ps:
         P_counter += 1
         # print my name, then info for each of my RBs.
-        term_write_P(P, P_counter, write_file)
+        term_write_P(myP, P_counter, write_file)
     # draw each RB that has no Ps above it.
     RB_counter = 0
     for myRB in memory.RBs:
         RB_counter += 1
         # if that RB has no Ps above it (i.e., myRB.myParentPs is empty), then draw it.
-        term_write_RB(RB, RB_counter, write_file)
+        term_write_RB(myRB, RB_counter, write_file)
     # for draw each PO that has no RBs.
     PO_counter = 0
     for myPO in memory.POs:
         PO_counter += 1
         # if that PO has no RBs (i.e., myPO.myRBs is empty), then draw it.
-        term_write_PO(PO, PO_counter, write_file)
+        term_write_PO(myPO, PO_counter, write_file)
 
 # function to write P and all its tokens to a file.
-def term_write_P(P, counter, write_file):
+def term_write_P(myP, counter, write_file):
     for myRB in myP.myRBs:
         RB_string = myRB.name + '-- Pred_name: ' + myRB.myPred[0].name + ' ('
         for link in myRB.myPred[0].mySemantics:
@@ -915,7 +922,7 @@ def term_write_P(P, counter, write_file):
         write_file.write('\n')
 
 # function to write a RB and all its tokens to a file.
-def term_write_RB(RB, counter, write_file):
+def term_write_RB(myRB, counter, write_file):
     if len(myRB.myParentPs) == 0:
         RB_string = 'RB ' + str(counter) + '.' + myRB.name + '-- Pred_name: ' + myRB.myPred[0].name + ' ('
         for link in myRB.myPred[0].mySemantics:
@@ -933,7 +940,7 @@ def term_write_RB(RB, counter, write_file):
         write_file.write('\n')
 
 # function to write a PO to a file.
-def term_write_PO(PO, counter, write_file):
+def term_write_PO(myPO, counter, write_file):
     if len(myPO.myRBs) == 0:
         PO_string = 'PO ' + str(counter) + '. -- Obj_name: ' + myPO.name + ' ('
         for link in myPO.mySemantics:
@@ -961,11 +968,6 @@ def swap_driver_recipient(memory):
         myRB.set = 'driver'
     for myPO in memory.recipient.POs:
         myPO.set = 'driver'
-    # now flip driver and recipient fields in the mapping connections. NOTE: Do I need to do anything with mappingHypotheses?????
-    for mc in memory.mappingConnections:
-        old_driver = mc.driverToken
-        mc.driverToken = mc.recipientToken
-        mc.recipientToken = old_driver
     # update the driver and recipient sets.
     memory = basicRunDORA.findDriverRecipient(memory)
     # return memory.
