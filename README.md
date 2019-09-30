@@ -2,25 +2,25 @@ ReadMe—DORA.
 
 The following provides detail on how to work with the DORA model code provided in this repository. The readMe assumes knowledge of the DORA model (see references for links to relevant papers). 
 
-The first part provides details on how to run learning sims reported in Doumas, Martin, Puebla, and Hummel (Relation learning…). The second part provides details on more detailed interaction with the DORA model. 
+The first part provides details on how to run learning sims reported in Doumas, Puebla, Martin, and Hummel (Relation learning…). The second part provides details on more detailed interaction with the DORA model. 
 
 Part 1: Simulations
 
 A version of the model after representation learning is available in the file batch_run_full. This file is in the form of a json dump produced by the save state function in the DORA menu (see below for information on the DORA menus, and see the section on sim files below for information on how to read these files). 
 
-To quick run learning in the model you can either use the visual preprocessor (XXXX.py) to generate DORA objects from pixel images, or use the processed Breakout objects in the file (breakout_objects.py). 
+To quick run learning in the model you can either use the visual preprocessor (ws2_dora.py) to generate DORA objects from pixel images, or use the processed Breakout objects in the file (breakout_objects.py). 
 
 To simulate relation learning, open DORA.py. In the main menu, load the correct sim file (either the one you generated using the visual pre_processor or breakout_objects.py) by pressing ‘L’, and typing the name of the file you’d like to load (e.g., breakout_objects.py), then run DORA by pressing ‘R’. In the run menu, press ‘R’ for (r)un DORA and then ‘D’ for (D)ORA controlled mode. The simulation will run for 5000 iterations. After the run, you can view the results of learning using the (v)iew Network option in the run menu, or return to the main menu by pressing ‘E’, and then save the current network state by pressing ’S’. 
 
 The output of the save operation will create a json dump (in plain text) of the state of the DORA network. 
 
-To run Q learning with the resulting DORA representations, run … 
-
-To 
+To run Q learning with the resulting DORA representations, run 
 
 To train the DQN, the DNN with preprocessed inputs, or the graph net, run DQL_breakout_training.py (or DQL_pong_training.py), QL_breakout_training.py (or QL_pong_training.py), or XXXX.py respectively. To test the results, use DQL_breakout_play.py (or DQL_pong_play.py), QL_breakout_play.py (or QL_pong_play.py), or XXXX.py. 
 
 Part 2: Working with the DORA network. 
+
+The workspace file has all the code necessary to use the basic DORA network. 
 
 The DORA main menu
 
