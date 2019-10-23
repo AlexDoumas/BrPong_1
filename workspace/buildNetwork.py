@@ -178,7 +178,7 @@ def makeAnalog(analog, memory):
                         # check if the semantic should be made (i.e., it doesn't already exist).
                         makeNewSem = True
                         # is the semantic in a list or not?
-                        if (type(semantic) is list):
+                        if type(semantic) is list:
                             for oldsemantic in memory.semantics:
                                 if oldsemantic.name == semantic[0]:
                                     makeNewSem = False
@@ -252,7 +252,7 @@ def makeAnalog(analog, memory):
                         # check if the semantic should be made (i.e., it doesn't already exist).
                         makeNewSem = True
                         # is the semantic in a list or not?
-                        if (type(semantic) is list):
+                        if type(semantic) is list:
                             for oldsemantic in memory.semantics:
                                 if oldsemantic.name == semantic[0]:
                                     makeNewSem = False
@@ -313,7 +313,7 @@ def makeAnalog(analog, memory):
                 for myP in reversed(memory.Ps):
                     if myP.name == myRB['P']:
                         # connect the current RB to that P and vise versa.
-                        newRB.myChildP.append(P)
+                        newRB.myChildP.append(myP)
                         myP.myParentRBs.append(newRB)
                         foundChildP = True
                         break
