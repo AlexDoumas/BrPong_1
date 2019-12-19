@@ -2,7 +2,7 @@
 # dataType objects for DORA.
 
 # imports.
-import random, math, pdb
+import random, math, numpy, pdb
 
 # set parameters.
 
@@ -994,11 +994,11 @@ class reg_E_Node(object):
     def update_input(self):
         # initialize input.
         self.input = 0.0
-        # for each node to which I am connected to, get inoput. 
+        # for each node to which I am connected to, get input. 
         for connection in self.higher_connections:
             self.input += connection.weight * connection.myhighernode.act 
         # for each node to which I am laterally connected, get input. 
-        # REMEMBER: lateral connections aren't links, they are actually just a list of all lateral units as all lateral inputs are inhbitory
+        # NOTE: lateral connections aren't links, they are actually just a list of all lateral units as all lateral inputs are inhbitory
         for unit in self.lateral_connections:
             if unit is not self:
                 self.input += -1.0 * unit.act
@@ -1034,13 +1034,14 @@ class reg_E_Node(object):
         self.act = 0.0
         self.time_since_fired = None
 
-# E nodes for neural entropy calculations with guassian input functions.
+# E nodes for neural entropy calculations with guassian activation functions.
 class gaussian_E_Node(object):
-    def __init__(self, name, higher_connections, lateral_connections, lower_connections):
+    def __init__(self, name, higher_connections, lateral_connections, lower_connections, threshold, mygamma):
         self.name = name
         self.act = 0.0
         self.input = 0.0
-        self.threshold = 0.5
+        self.threshold = threshold
+        self.mygamma = mygamma
         self.time_since_fired = None
         self.higher_connections = higher_connections
         self.lateral_connections = lateral_connections
@@ -1051,21 +1052,30 @@ class gaussian_E_Node(object):
         self.input = 0.0
         # for each node to which I am connected to, get input. 
         for connection in self.higher_connections:
-            self.input += connection.weight * math.exp(-10*pow((connection.myhighernode.act - 0.5), 2))
+            self.input += connection.weight * connection.myhighernode.act 
         # for each node to which I am laterally connected, get input. 
-        # REMEMBER: lateral connections aren't links, they are actually just a list of all lateral units as all lateral inputs are inhbitory
-        for unit in self.lateral_connections:
-            if unit is not self:
-                self.input += -1.0 * unit.act
+        # NOTE: lateral connections aren't links, they are actually just a list of all lateral units as all lateral inputs are inhbitory
+        #for unit in self.lateral_connections:
+        #    if unit is not self:
+        #        self.input += -2.0 * unit.act
+        # adjust by time fired.
+        if self.time_since_fired:
+            self.input -= 1/(.1+(0.00000000001*pow(math.e, self.time_since_fired)))
+            self.time_since_fired += 1
         
     def update_act(self):
-        # update as sigmoidal unit. 
-        self.act = 1/(1+(pow(math.e, -10*(self.input - self.threshold))))
+        # update as guassian unit. 
+        self.act += self.mygamma * pow(math.e, -(pow((self.input-self.threshold), 2)/pow(.2,2))) - .1*self.act - .5*numpy.sum([x.act for x in self.lateral_connections if x is not self])
+        # hard limit activation to between 0 and 1. 
+        if self.act > 1:
+            self.act = 1.0
+        elif self.act < 0:
+            self.act = 0.0
     
     def adjust_links(self):
         # for all of my links to semantic units (i.e., lower_connections), update weights according to simple Hebbian rule with a growth parameter (=.2).
         for link in self.lower_connections:
-            link.weight += self.act*(link.mylowernode.act - link.weight)*.2
+            link.weight += self.act*(link.mylowernode.act - link.weight)*.1
 
     def clear_input(self):
         self.input = 0.0
@@ -1081,12 +1091,12 @@ class gaussian_E_Node(object):
 
 # A nodes for neural netropy calculations. 
 class reg_A_Node(object):
-    def __init__(self, name, higher_connections, lateral_connections, lower_connections):
+    def __init__(self, name, higher_connections, lateral_connections, lower_connections, threshold):
         self.name = name
         self.act = 0.0
         self.input = 0.0
         self.time_since_fired = None
-        self.threshold = 0.5
+        self.threshold = threshold
         self.higher_connections = higher_connections
         self.lateral_connections = lateral_connections
         self.lower_connections = lower_connections
@@ -1098,17 +1108,19 @@ class reg_A_Node(object):
         for connection in self.higher_connections:
             self.input += connection.weight * connection.myhighernode.act 
         # for each node to which I am laterally connected, get input. 
-        # REMEMBER: lateral connections aren't links, they are actually just a list of all lateral units as all lateral inputs are inhbitory
+        # NOTE: lateral connections aren't links, they are actually just a list of all lateral units as all lateral inputs are inhbitory
         for unit in self.lateral_connections:
             if unit is not self:
                 self.input += -1.0 * unit.act
+        # adjust by time fired.
+        if self.time_since_fired:
+            self.input -= 1/(.1+(0.0001*pow(math.e, self.time_since_fired)))
+            self.time_since_fired += 1
 
     def update_act(self):
-        # update as leaky sigmoidal unit. 
-        delta_act = 0.5*(1/(1+(pow(math.e, -10*(self.input - self.threshold))))) - (0.1*self.act)
-        self.act += delta_act
+        # update activation. 
         self.act = 1/(1+(pow(math.e, -10*(self.input - self.threshold))))
-        # hard limit activation to between 0.0 and 1.0.
+        # hard limit activation to between 0.0 and 1.0. (Not actually necessary, but here as a historical sanity check.)
         if self.act > 1.0:
             self.act = 1.0
         elif self.act < 0.0:
@@ -1145,7 +1157,68 @@ class entropyNet(object):
         self.inputs = []
         self.outputs = []
         self.connections = []
-
+        self.settled = None # used to mark if the network has settled during an entropy calculation for not. This value is used only for debugging. It has no direct interaction with the model's behaviour. 
+        self.settled_delta = None # used to track the settling delta during an entropy calculation. This value is used only for debugging. It has no direct interaction with the model's behaviour. 
+        self.settled_iters = None # used to track how long it took to settle during an entropy calculation. 
+        
+    
+    def fillin(self, extent1, extent2):
+        # populate the entropyNet with extents and entropynodes (i.e., semantics and POs). 
+        # instantiate as extents as simple nodes (or semantics). 
+        for i in range(max(int(extent1),int(extent2))):
+            new_sem = basicEntNode(False, True, [])
+            self.inputs.append(new_sem)
+        # make a PO proxy attached to each extent as a higher-level (output) node.
+        # first, the PO proxy nodes (or entorpynodes).
+        extent_node1 = basicEntNode(True, False, [])
+        extent_node2 = basicEntNode(True, False, [])
+        self.outputs = [extent_node1, extent_node2]
+        # second, connect each node to the correct extent semantics.
+        for i in range(int(extent1)):
+            # create a link between the ith input unit and extent_node1.
+            new_connection = basicLink(extent_node1, self.inputs[i], 1.0)
+            self.connections.append(new_connection) 
+            # add the connection to the higher and lower nodes it links.
+            extent_node1.connections.append(new_connection)
+            self.inputs[i].connections.append(new_connection)
+        for i in range(int(extent2)):
+            # create a link between the ith input unit and extent_node2.
+            new_connection = basicLink(extent_node2, self.inputs[i], 1.0)
+            self.connections.append(new_connection)
+            # add the connection to the higher and lower nodes it links.
+            extent_node2.connections.append(new_connection)
+            self.inputs[i].connections.append(new_connection)
+    
+    def runEntropyNet(self, gamma=0.3, delta=0.1):
+        # function to run the network settles (i.e., only one output node is active for 3 iterations). Take as inputs the value of gamma and delta. 
+        # initialise self.settled, self.settled_delta, and self.settled_iters to None. 
+        self.settled, self.settled_delta, self.settled_iters = None, None, None
+        # set activations of all extent nodes to 1.0.
+        for node in self.inputs:
+            node.act = 1.0
+        delta_outputs_previous = 0.0
+        settled = 0
+        iterations = 0
+        while settled < 3 and iterations < 300:
+            # update the inputs to the output units.
+            for node in self.outputs:
+                node.clear_input()
+                node.update_input(self)
+            # update the activations of the output units.
+            for node in self.outputs:
+                node.update_act(gamma, delta)
+            # check for settling. if the delta_outputs has not changed, add 1 to settled, otherwise, clear unsettled. Delta is calculated over outputs rounded to 3 decimals. 
+            delta_outputs = round(self.outputs[0].act, 5)-round(self.outputs[1].act,5)
+            if delta_outputs == delta_outputs_previous:
+                settled += 1
+            else:
+                settled = 0
+            delta_outputs_previous = delta_outputs
+            iterations += 1
+        # update elf.settled, self.settled_delta, and self.settled_iters for debugging purposes. 
+        #self.settled = settled
+        #self.settled_delta = delta_outputs
+        self.settled_iters = iterations
 
 
 
