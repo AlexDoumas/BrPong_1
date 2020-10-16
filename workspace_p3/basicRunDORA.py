@@ -305,11 +305,9 @@ class runDORA(object):
             self.post_phase_set_operations(retrieval_license=True, map_license=False)
     
     # operations for DORA's same/different/more/less detection using simple entropy. Find instances of same/different and more/less using entropy.
-    # Basic idea (same/diff): For same/different, compare or over-lay the two representations. Create a DORAese sematnic signal (i.e., shared units have greater activation than unshared units). Calculate the error of the DORAese semantic pattern to a pattern with no entropy (i.e., all the active semantics have activation of 1.0). The extent of the error is a measure of difference, with low (or zero) error corresponding to 'same', and higher error corresponding to 'different'.
-    # Basic idea (more/less): For more/less the idea is very similar to same/diff. If you have two instances coded with magnitude, and the magnitude corresponds to a level of neural firing (more firing for more magnitude), identifying more and less is simply comparing or over-laying the two representations of magnitude, and computing an error signal. The higher the error signal the greater the difference, and the item that is over-activated by the error signal (i.e., the error signal shows too much activation) is the 'more' item, and the under-activated item (i.e., the error signal shows too little activation) is the 'less' item.
     def do_entropy_ops_within(self, pred_only):
         # within (entropy over items from the same analog in the driver/recipient) set entropy_ops are used to compute specific kinds of similarity/difference/magnitude over dimensions (coded by preds) in the same analog in the driver or the recipient.
-        extend_SDML = False
+        extend_SDML = True
         # set asDORA mode to True if it is not already. 
         changed_mode = False
         if not self.asDORA:
@@ -317,41 +315,94 @@ class runDORA(object):
             changed_mode = True
         # do initialize network operations (steps 1-3 above).
         self.do_1_to_3(mapping=False)
-        # for each analog in the driver, check if any preds code the same dimension. If those preds have not had entropy operations run over them already (i.e., they are NOT connected to any invariants for 'same', 'more', or 'less'), then run ent_magnitudeMoreLessSame() over the dimensions and attach 'more' invariant to the greater extent and 'less' invariant to the smaller extent, or 'same' invariant to both if they are equal.
+        # iterate through analogs in the driver. 
         for analog in self.memory.driver.analogs:
-            for myPO in analog.myPOs:
-                # if that PO codes a dimension, find if there are any other POs in the same mode (i.e., .predOrObj) that code a dimension. Here you iterate through analog.myPOs from myPO onwards. 
-                for myPO2 in analog.myPOs[analog.myPOs.index(myPO):]:
-                    if (myPO is not myPO2) and (myPO.predOrObj == myPO2.predOrObj):
-                        # check if they code the same dimension (are they both connected to a semantic unit coding a dimension with a weight near 1?), and whether any POs are connected to any SDM semantics (i.e., "more", "less", or "same"). 
-                        intersect_dim, one_mag_sem_present, both_mag_sem_present = en_based_mag_checks(myPO, myPO2)
-                        # if the POs are preds, and mag_sem_present is False, then run basic_en_based_mag_comparison(). 
-                        if not one_mag_sem_present and (myPO.predOrObj == 1) and (len(intersect_dim) == 1):
-                            self.memory = basic_en_based_mag_comparison(myPO, myPO2, intersect_dim, self.memory, self.mag_decimal_precision)
-                        # if the POs are preds and those preds are already connected to relative magnitude semantics, then extend the entropy calculation as long as extend_SDML is True.
-                        elif (myPO.predOrObj == 1) and both_mag_sem_present and extend_SDML==True:
-                            # if there are magnitude semantics present, and there are some matching dimensions, then activate the appropriate magnitude semantics and matching dimensions, and adjust weights as appropriate (i.e., turn on the appropriate magnitude semantics for each PO, and adjust weights accordingly).
-                            self.memory = basic_en_based_mag_refinement(myPO, myPO2, self.memory)
-                        elif (myPO.predOrObj == 0) and (len(intersect_dim) >= 1 and pred_only == False):
-                            # for each common dimension, run ent_magnitudeMoreLessSame().
-                            for dim in intersect_dim:
-                                # find the semantics that code for the amount on the common dimension.
-                                sem_link_PO = [link for link in myPO.mySemantics if (link.mySemantic.dimension == dim) and (link.mySemantic.amount != 'nil')]
-                                sem_link_PO2 = [link for link in myPO2.mySemantics if (link.mySemantic.dimension == dim) and (link.mySemantic.amount != 'nil')]
-                                # get the sem_links out of lists and into simple variables.
-                                sem_link_PO, sem_link_PO2 = sem_link_PO[0], sem_link_PO2[0]
-                                # get the extents/amounts for the dimension.
-                                extent1 = sem_link_PO.mySemantic.amount
-                                extent2 = sem_link_PO2.mySemantic.amount
-                                more, less, same_flag, iterations = ent_magnitudeMoreLessSame(extent1, extent2, self.mag_decimal_precision)
-                                # connect the two POs to the appropraite relative magnitude semantics (based on the invariant patterns detected doing ent_magnitudeMoreLessSame()).
-                                if more == extent2:
-                                    # call attach_mag_semantics() with myPO2 as firstPO and myPO as secondPO.
-                                    self.memory = attach_mag_semantics(same_flag, myPO2, myPO, sem_link_PO2, sem_link_PO, self.memory)
-                                else:
-                                    # call attach_mag_semantics() with myPO as firstPO and myPO2 as secondPO.
-                                    self.memory = attach_mag_semantics(same_flag, myPO, myPO2, sem_link_PO, sem_link_PO2, self.memory)
-        # if you changed asDORA mode (i.e., changed_mode == True), then set asDORA back to False.
+            # for each analog, randomly select a pair of POs that both are strongly connected to a dimenions, and do an entropy comparison if applicable. 
+            # check if there are preds present. 
+            pred_present = False
+            for presPO in analog.myPOs:
+                if presPO.predOrObj == 1:
+                    pred_present = True
+                    break
+            if len(analog.myPs) > 0:
+                for myP in analog.myPs:
+                    match_int_dim = []
+                    match_both_mag_sem = []
+                    match_one_mag_sem = []
+                    match_both_mag_sem_below = []
+                    # check all PO pairs.
+                    # find all predPOs. 
+                    pred_list = []
+                    for myRB in myP.myRBs:
+                        pred_list.append(myRB.myPred[0])
+                    # check all PO pairs.
+                    for myPO in pred_list:
+                        for myPO2 in pred_list[pred_list.index(myPO)+1:]:
+                            if (myPO is not myPO2) and (myPO.predOrObj == myPO2.predOrObj):
+                                # check if they code the same dimension (are they both connected to a semantic unit coding a dimension with a weight near 1?), and whether any POs are connected to any SDM semantics (i.e., "more", "less", or "same") at all, or both are connected to SDM semantics below threshold. 
+                                intersect_dim, one_mag_sem_present, both_mag_sem_present, one_mag_sem_present_belowThresh, both_mag_sem_present_belowThresh = en_based_mag_checks(myPO, myPO2)
+                                new_dict = {'PO1': myPO, 'PO2': myPO2, 'intersect_dim': intersect_dim, 'one_mag_sem_present': one_mag_sem_present, 'both_mag_sem_present': both_mag_sem_present, 'one_mag_sem_present_belowThresh': one_mag_sem_present_belowThresh, 'both_mag_sem_present_belowThresh': both_mag_sem_present_belowThresh}
+                                if len(intersect_dim) >= 1:
+                                    match_int_dim.append(new_dict)
+                                if both_mag_sem_present:
+                                    match_both_mag_sem.append(new_dict)
+                                if one_mag_sem_present:
+                                    match_one_mag_sem.append(new_dict)
+                                if both_mag_sem_present_belowThresh:
+                                    match_both_mag_sem_below.append(new_dict)
+                    # now the random selection of pair of POs if any exist.
+                    # If SDM semantics are present, then no run. If no SDM semantics present and dimensions present, then run entropy ops. If entropy ops kind of active, then find the best dimension and run entropy ops. 
+                    ent_pair = None
+                    if len(match_both_mag_sem) >= 1:
+                        ent_pair = None
+                    elif len(match_one_mag_sem) > 0:
+                        ent_pair = random.choice(match_one_mag_sem)
+                    elif len(match_both_mag_sem_below) > 0:
+                        ent_pair = random.choice(match_both_mag_sem_below)
+                    elif len(match_int_dim) > 0:
+                        ent_pair = random.choice(match_int_dim)
+                    # now select and run appropriate en_op.
+                    if ent_pair:
+                        myPO, myPO2, intersect_dim, one_mag_sem_present, both_mag_sem_present, one_mag_sem_present_belowThresh, both_mag_sem_present_belowThresh = ent_pair['PO1'], ent_pair['PO2'], ent_pair['intersect_dim'], ent_pair['one_mag_sem_present'],  ent_pair['both_mag_sem_present'], ent_pair['one_mag_sem_present_belowThresh'], ent_pair['both_mag_sem_present_belowThresh']
+                        self.memory = check_and_run_ent_ops_within(myPO, myPO2, intersect_dim, one_mag_sem_present, both_mag_sem_present, one_mag_sem_present_belowThresh, both_mag_sem_present_belowThresh, extend_SDML, pred_only, pred_present, self.memory, self.mag_decimal_precision)
+            elif len(analog.myRBs) > 0:
+                match_list = []
+                # find all predPOs. 
+                pred_list = []
+                for myRB in analog.myRBs:
+                    pred_list.append(myRB.myPred[0])
+                # check PO pairs.
+                for myPO in pred_list:
+                    for myPO2 in pred_list[pred_list.index(myPO)+1:]:
+                        if (myPO is not myPO2) and (myPO.predOrObj == myPO2.predOrObj):
+                            # check if they code the same dimension (are they both connected to a semantic unit coding a dimension with a weight near 1?), and whether any POs are connected to any SDM semantics (i.e., "more", "less", or "same") at all, or both are connected to SDM semantics below threshold. 
+                            intersect_dim, one_mag_sem_present, both_mag_sem_present, one_mag_sem_present_belowThresh, both_mag_sem_present_belowThresh = en_based_mag_checks(myPO, myPO2)
+                            new_dict = {'PO1': myPO, 'PO2': myPO2, 'intersect_dim': intersect_dim, 'one_mag_sem_present': one_mag_sem_present, 'both_mag_sem_present': both_mag_sem_present, 'one_mag_sem_present_belowThresh': one_mag_sem_present_belowThresh, 'both_mag_sem_present_belowThresh': both_mag_sem_present_belowThresh}
+                            if len(intersect_dim) >= 1:
+                                match_list.append(new_dict)
+                # Now the random selection of pair of POs if any exist. 
+                if len(match_list) >= 1:
+                    ent_pair = random.choice(match_list)
+                    myPO, myPO2, intersect_dim, one_mag_sem_present, both_mag_sem_present, one_mag_sem_present_belowThresh, both_mag_sem_present_belowThresh = ent_pair['PO1'], ent_pair['PO2'], ent_pair['intersect_dim'], ent_pair['one_mag_sem_present'],  ent_pair['both_mag_sem_present'], ent_pair['one_mag_sem_present_belowThresh'], ent_pair['both_mag_sem_present_belowThresh']
+                    # now select and run appropriate en_op.
+                    self.memory = check_and_run_ent_ops_within(myPO, myPO2, intersect_dim, one_mag_sem_present, both_mag_sem_present, one_mag_sem_present_belowThresh, both_mag_sem_present_belowThresh, extend_SDML, pred_only, pred_present, self.memory, self.mag_decimal_precision)
+            else:
+                match_list = []
+                for myPO in analog.myPOs:
+                    for myPO2 in analog.myPOs[analog.myPOs.index(myPO)+1:]:
+                        if (myPO is not myPO2) and (myPO.predOrObj == myPO2.predOrObj):
+                            # check if they code the same dimension (are they both connected to a semantic unit coding a dimension with a weight near 1?), and whether any POs are connected to any SDM semantics (i.e., "more", "less", or "same") at all, or both are connected to SDM semantics below threshold. 
+                            intersect_dim, one_mag_sem_present, both_mag_sem_present, one_mag_sem_present_belowThresh, both_mag_sem_present_belowThresh = en_based_mag_checks(myPO, myPO2)
+                            if len(intersect_dim) >= 1:
+                                new_dict = {'PO1': myPO, 'PO2': myPO2, 'intersect_dim': intersect_dim, 'one_mag_sem_present': one_mag_sem_present, 'both_mag_sem_present': both_mag_sem_present, 'one_mag_sem_present_belowThresh': one_mag_sem_present_belowThresh, 'both_mag_sem_present_belowThresh': both_mag_sem_present_belowThresh}
+                                match_list.append(new_dict)
+                # Now the random selection of pair of POs if any exist. 
+                if len(match_list) >= 1:
+                    ent_pair = random.choice(match_list)
+                    myPO, myPO2, intersect_dim, one_mag_sem_present, both_mag_sem_present, one_mag_sem_present_belowThresh, both_mag_sem_present_belowThresh = ent_pair['PO1'], ent_pair['PO2'], ent_pair['intersect_dim'], ent_pair['one_mag_sem_present'],  ent_pair['both_mag_sem_present'], ent_pair['one_mag_sem_present_belowThresh'], ent_pair['both_mag_sem_present_belowThresh']
+                    # now select and run appropriate en_op.
+                    self.memory = check_and_run_ent_ops_within(myPO, myPO2, intersect_dim, one_mag_sem_present, both_mag_sem_present, one_mag_sem_present_belowThresh, both_mag_sem_present_belowThresh, extend_SDML, pred_only, pred_present, self.memory, self.mag_decimal_precision)
+        # done so change change mode back to LISA if you changed_mode is True.
         if changed_mode:
             self.asDORA = False
     
@@ -961,7 +1012,6 @@ class runDORA(object):
 ######### CORE DORA FUNCTIONS #########
 #######################################
 # function to make AM without making copies of items in LTM.
-# noinspection PyPep8Naming
 def make_AM(memory):
     # for each token, if it is in an AM set (driver, recipient), then make sure all sub-tokens are also in that set. Make sure that all tokens from the same analog are in the same set or in memory (i.e., tokens from the same analog CANNOT be in different AM sets). run findDriverRecipient().
     # for each token unit, make sure all subtokens are in the same set. Also, make sure that if a token is to enter recipient, that it checks to make sure none of it's subtokens are in the driver, and, if they are, that it remains in memory.
@@ -2441,6 +2491,7 @@ def retrieve_tokens(memory, bias_retrieval_analogs, use_relative_act):
                     analog_activation_list.append(analog.normalised_retrieval_act)
             # retrieve analogs with a probability calculated as a function of the ratio of the specific analog's normalised activation to the average normalised activation of all active analogs.
             # find the average and highest normalised activation for analogs.
+            #pdb.set_trace()
             avg_analog_norm_act = np.mean(analog_activation_list)
             high_analog_norm_act = max(analog_activation_list)
             avg_analog_norm_act = (high_analog_norm_act+avg_analog_norm_act)/2
@@ -2624,28 +2675,41 @@ def get_my_max_map_unit(unit):
 def en_based_mag_checks(myPO, myPO2):
     # check if they code the same dimension (are they both connected to a semantic unit coding a dimension with a weight near 1?), and whether any POs are connected to any SDM semantics (i.e., "more", "less", or "same"). 
     # first, do they code for intersecting dimensions. 
-    intersect_dim = list(set([x.mySemantic.dimension for x in myPO.mySemantics if x.mySemantic.dimension and x.weight > .7]).intersection([y.mySemantic.dimension for y in myPO2.mySemantics if y.mySemantic.dimension and y.weight > .7]))
-    # second, does either PO have connections to any SDM semantics with weights above threshold(=.7). 
+    intersect_dim = list(set([x.mySemantic.dimension for x in myPO.mySemantics if x.mySemantic.dimension and x.weight > .9]).intersection([y.mySemantic.dimension for y in myPO2.mySemantics if y.mySemantic.dimension and y.weight > .9]))
+    # second, does either PO have connections to any SDM semantics with weights above threshold(=.9), or do both connnect to any SDM semantics below threshold(=.9). 
     one_mag_sem_present = False
     both_mag_sem_present = False
+    one_mag_sem_present_belowThresh = False
+    both_mag_sem_present_belowThresh = False
+    # check myPO and then myPO2 for mag sem above threshold(=.9). If you find any set one_mag_sem_present to True.
     for link in myPO.mySemantics:
         if link.mySemantic.name == 'same' or link.mySemantic.name == 'different' or link.mySemantic.name == 'more' or link.mySemantic.name == 'less':
-            if link.weight > .7:
+            if link.weight > .9:
                 one_mag_sem_present = True
                 break
-    # now, if one_mag_sem_present is True, then check if there are mag_sem in myPO2. If there are, set both_mag_sem_present to True. 
-    if one_mag_sem_present:
-        for link in myPO2.mySemantics:
-            if link.mySemantic.name == 'same' or link.mySemantic.name == 'different' or link.mySemantic.name == 'more' or link.mySemantic.name == 'less':
-                if link.weight > .7:
+    for link in myPO2.mySemantics:
+        if link.mySemantic.name == 'same' or link.mySemantic.name == 'different' or link.mySemantic.name == 'more' or link.mySemantic.name == 'less':
+            if link.weight > .9:
+                if one_mag_sem_present:
                     both_mag_sem_present = True
                     break
-    else:
-        # otherwise (i.e., one_mag_sem_present is False), then check if there are mag_sem in myPO2. If there are, set one_mag_sem_present to True (i.e., there are no mag_sem in myPO, but there are in myPO2). 
-        for link in myPO2.mySemantics:
-            if link.mySemantic.name == 'same' or link.mySemantic.name == 'different' or link.mySemantic.name == 'more' or link.mySemantic.name == 'less':
-                if link.weight > .7:
+                else:
                     one_mag_sem_present = True
+                    break
+    # check if there are mag_sem in eachPO that are below threshold (=.9). If there are any, then set one_mag_sem_present_belowThresh to True, and if there are such sem in both, then set both_mag_sem_present_belowThresh to True. 
+    for link in myPO.mySemantics:
+        if link.mySemantic.name == 'same' or link.mySemantic.name == 'different' or link.mySemantic.name == 'more' or link.mySemantic.name == 'less':
+            if link.weight < .9:
+                one_mag_sem_present_belowThresh = True
+                break
+    for link in myPO2.mySemantics:
+        if link.mySemantic.name == 'same' or link.mySemantic.name == 'different' or link.mySemantic.name == 'more' or link.mySemantic.name == 'less':
+            if link.weight < .9:
+                if one_mag_sem_present_belowThresh == True:
+                    both_mag_sem_present_belowThresh = True
+                    break
+                else:
+                    one_mag_sem_present_belowThresh = True
                     break
     # third, find the dimension of highest over-lap. That is, find the semantic that codes the 'value' for each dimension in intersect_dim with the highest weight. 
     # for each PO find the 'state' and 'value' semantics for each dimension in intersect_dim. 
@@ -2675,7 +2739,23 @@ def en_based_mag_checks(myPO, myPO2):
     else:
         intersect_dim = []
     # return the intersect_dim and mag_sem_present. 
-    return intersect_dim, one_mag_sem_present, both_mag_sem_present
+    return intersect_dim, one_mag_sem_present, both_mag_sem_present, one_mag_sem_present_belowThresh, both_mag_sem_present_belowThresh
+
+# function to check whether to run entropy based magnitude comparison (within) and to run ntropy based magnitude comparison (within) if appropriate.
+def check_and_run_ent_ops_within(myPO, myPO2, intersect_dim, one_mag_sem_present, both_mag_sem_present, one_mag_sem_present_belowThresh, both_mag_sem_present_belowThresh, extend_SDML, pred_only, pred_present, memory, mag_decimal_precision):
+    # run energy based mag comparison. NOTE1: basic_en_based_mag_comparison() and basic_en_based_mag_refinement() do the same thing, but basic_en_based_mag_refinement() is faster when mag sem are already present (no need to build connections) and so is used when it can be (mag_sem_present_belowThresh). NOTE2: There is a separate call to basic_en_based_mag_refinement() for POs that are objects so that refinement does not work on objects when preds_only is True. 
+    if not one_mag_sem_present and not both_mag_sem_present_belowThresh and (myPO.predOrObj == 1) and (len(intersect_dim) >= 1):
+        # no SDM sem present, so run mag_comparison.
+        memory = basic_en_based_mag_comparison(myPO, myPO2, intersect_dim, memory, mag_decimal_precision)
+    elif (myPO.predOrObj == 1) and not both_mag_sem_present and extend_SDML==True:
+        if one_mag_sem_present or one_mag_sem_present_belowThresh:
+            # there are mag_sem present at a high-level (multiple or strongly connected), so refine based on the strongest connected dimension.
+            memory = basic_en_based_mag_refinement(myPO, myPO2, memory)
+    elif (myPO.predOrObj == 0) and (len(intersect_dim) >= 1 and pred_only == False) and (pred_present == False) and not one_mag_sem_present:
+        # no SDM present, so run mag_comparison on objects.
+        memory = basic_en_based_mag_comparison(myPO, myPO2, intersect_dim, memory, mag_decimal_precision)
+    # returns.
+    return memory
 
 # function to do basic energy/entropy based magnitude comparison when no magnitude semantics are present.
 def basic_en_based_mag_comparison(myPO, myPO2, intersect_dim, memory, mag_decimal_precision=0):
@@ -2691,7 +2771,7 @@ def basic_en_based_mag_comparison(myPO, myPO2, intersect_dim, memory, mag_decima
         extent1 = sem_link_PO[0].mySemantic.amount
         extent2 = sem_link_PO2[0].mySemantics.amount
     # compute ent_magnitudeMoreLessSame(). 
-    more, less, same_flag, iterations = ent_magnitudeMoreLessSame(extent1, extent2, mag_decimal_precision)
+    more, less, same_flag, iterations = ent_magnitudeMoreLessSame(extent1_round, extent1_round, mag_decimal_precision)
     # find any other dimensional semantics with high weights so that the weights can be reduced by the entropy process. 
     other_sem_links_PO = [link for link in myPO.mySemantics if (link.mySemantic.dimension is not None) and (link.mySemantic.dimension != intersect_dim[0])]
     other_sem_links_PO2 = [link for link in myPO2.mySemantics if (link.mySemantic.dimension is not None) and (link.mySemantic.dimension != intersect_dim[0])]
@@ -2710,140 +2790,79 @@ def basic_en_based_mag_comparison(myPO, myPO2, intersect_dim, memory, mag_decima
 # function to do basic energy/entropy based magnitude refinement when magnitude semantics are already present. 
 def basic_en_based_mag_refinement(myPO, myPO2, memory):
     # if there are magnitude semantics present, and there are some matching dimensions, then activate the appropriate magnitude semantics and matching dimensions, and adjust weights as appropriate (i.e., turn on the appropriate magnitude semantics for each PO, and adjust weight accordingly). 
+    mag_decimal_precision = 1
     # find the dimension on which they match if there is one. 
-    match_dim = list(set([x.mySemantic.dimension for x in myPO.mySemantics if x.mySemantic.dimension and x.mySemantic.ont_status == 'state' and x.weight > .95]).intersection([y.mySemantic.dimension for y in myPO2.mySemantics if y.mySemantic.dimension and y.mySemantic.ont_status == 'state' and y.weight > .95]))
-    # find the magnitude semantic each PO is most connected to. 
-    # first, myPO1. 
-    myPO1_mag_link = None
-    myPO1_other_mags = []
-    for mylink in myPO.mySemantics:
-        if mylink.mySemantic.name == 'same' or mylink.mySemantic.name == 'different' or mylink.mySemantic.name == 'more' or mylink.mySemantic.name == 'less':
-            if myPO1_mag_link:
-                # check if the weight to this semantic is greater than the weight to the semantic currently in myPO1_mag_link. 
-                if mylink.weight > myPO1_mag_link.weight:
-                    myPO1_other_mags.append(myPO1_mag_link)
-                    myPO1_mag_link = mylink
-                else:
-                    myPO1_other_mags.append(mylink)
-            else:
-                # mylink is the first magnitude link for this PO, so put it in myPO1_mag_link. 
-                myPO1_mag_link = mylink
-        elif mylink.mySemantic.ont_status == 'state':
-            if mylink not in match_dim and mylink.weight < .7:
-                myPO1_other_mags.append(mylink)
-    # second, myPO2. 
-    myPO2_mag_link = None
-    myPO2_other_mags = []
-    for mylink in myPO2.mySemantics:
-        if mylink.mySemantic.name == 'same' or mylink.mySemantic.name == 'different' or mylink.mySemantic.name == 'more' or mylink.mySemantic.name == 'less':
-            if myPO2_mag_link:
-                # check if the weight to this semantic is greater than the weight to the semantic currently in myPO2_mag_link. 
-                if mylink.weight > myPO2_mag_link.weight:
-                    myPO2_other_mags.append(myPO2_mag_link)
-                    myPO2_mag_link = mylink
-                else:
-                    myPO2_other_mags.append(mylink)
-            else:
-                # mylink is the first magnitude link for this PO, so put it in myPO2_mag_link. 
-                myPO2_mag_link = mylink
-        elif mylink.mySemantic.ont_status == 'state':
-            if mylink not in match_dim and mylink.weight < .7:
-                myPO2_other_mags.append(mylink)
-    #######################################################################################################
-    # NOTE: DEBUG... for some reason I got a weird behaviour where there was no myPO1_mag_link. We shouldn't be entering refinement function if that's the case. This code will force debug entry if we get that situation, then we can trace the problem... 
-    if myPO1_mag_link is None or myPO2_mag_link is None:
-        pdb.set_trace()
-    #######################################################################################################
-    # if either PO is attached to 'more', activate it and update weights, then actiate the other PO and the 'less' semantic and update weights. Otherwise, update the 'same' or different' connections of both POs. 
-    if myPO1_mag_link.mySemantic.name == 'more':
-        # update the weight to myPO1_mag_link. 
-        myPO1_mag_link.weight = 1.0
-        # update the weight to other mag_links. 
-        for link in myPO1_other_mags:
-            link.weight /= 2
-        # update the weight to myPO2_mag_links. 
-        if myPO2_mag_link.mySemantic.name == 'less':
-            # update the weight to myPO1_mag_link.
-            myPO2_mag_link.weight = 1.0
-            # update the weight to other mag_links. 
-            for link in myPO2_other_mags:
-                link.weight /= 2
+    match_dim = list(set([x.mySemantic.dimension for x in myPO.mySemantics if x.mySemantic.dimension and x.mySemantic.ont_status == 'state' and x.weight > .9]).intersection([y.mySemantic.dimension for y in myPO2.mySemantics if y.mySemantic.dimension and y.mySemantic.ont_status == 'state' and y.weight > .9]))
+    # if there is a single matching dimension, then find value on that dimension for each object and update magnitude semantic weights; elif there are multiple matching dimensions, find the matching dimension that each PO is most strongly connected to, and update magnitude semantic weights. 
+    if len(match_dim) == 1:
+        # find the semantic links connecting to the absolute dimensional value. 
+        sem_link_PO = [link for link in myPO.mySemantics if (link.mySemantic.dimension == match_dim[0]) and link.mySemantic.ont_status == 'state']
+        sem_link_PO2 = [link for link in myPO2.mySemantics if (link.mySemantic.dimension == match_dim[0]) and link.mySemantic.ont_status == 'state']
+        # find value on that dimension for each object and then update magnitude semantic weights.
+        PO1_dim_val, PO2_dim_val = 0.0, 0.0
+        for link in myPO.myRBs[0].myObj[0].mySemantics:
+            if link.mySemantic.dimension == match_dim[0] and link.mySemantic.ont_status == 'value' and link.mySemantic.amount != None:
+                PO1_dim_val = link.mySemantic.amount
+                break
+        for link in myPO2.myRBs[0].myObj[0].mySemantics:
+            if link.mySemantic.dimension == match_dim[0] and link.mySemantic.ont_status == 'value'and link.mySemantic.amount != None:
+                PO2_dim_val = link.mySemantic.amount
+                break
+        # compute ent_magnitudeMoreLessSame(). 
+        more, less, same_flag, iterations = ent_magnitudeMoreLessSame(PO1_dim_val, PO2_dim_val, mag_decimal_precision)
+        # connect the two POs to the appropraite relative magnitude semantics (based on the invariant patterns detected just above). 
+        if more == PO2_dim_val:
+            # call update_mag_semantics() with myPO2 as firstPO and myPO as secondPO. 
+            memory = update_mag_semantics(same_flag, myPO2, myPO, sem_link_PO2[0], sem_link_PO[0], memory)
         else:
-            myPO2_other_mags.append(myPO2_mag_link)
-            # see if myPO2 is connected to the "more" semantic, and, if it is not, connect it to the "more" semantic. 
-            myPO2_mag_link = [link for link in myPO2_other_mags if link.mySemantic.name == 'more']
-            #if len(myPO2_mag_link) > 0:
-            #    myPO2_mag_link = myPO1_mag_link[0]
-            #else:
-            if len(myPO2_mag_link) < 1:
-                # create a link to the "more" semantic. 
-                more_semantic = [semantic for semantic in memory.semantics if semantic.name == 'more']
-                more_link = dataTypes.Link(myPO2, [], more_semantic, 1.0)
-                myPO2_mag_link = more_link
-            # update the weight to myPO2_mag_link. 
-            try:
-                myPO2_mag_link.weight = 1.0
-            except:
-                pdb.set_trace()
-            # update the weight to other mag_links. 
-            for link in myPO2_other_mags:
-                link.weight /= 2
-    elif myPO2_mag_link.mySemantic.name == 'more':
-        # update the weight to myPO2_mag_link. 
-        myPO2_mag_link.weight = 1.0
-        # update the weight to other mag_links. 
-        for link in myPO2_other_mags:
-            link.weight /= 2
-        # update the weight to myPO1_mag_links. 
-        if myPO1_mag_link.mySemantic.name == 'less':
-            # update the weight to myPO1_mag_link. 
-            myPO1_mag_link.weight = 1.0
-            # update the weight to other mag_links. 
-            for link in myPO1_other_mags:
-                link.weight /= 2
-        else:
-            myPO1_other_mags.append(myPO1_mag_link)
-            # see if myPO1 is connected to the "less" semantic, and, if it is not, connect it to the "less" semantic. 
-            myPO1_mag_link = [link for link in myPO1_other_mags if link.mySemantic.name == 'less']
-            if len(myPO1_mag_link) > 0:
-                myPO1_mag_link = myPO1_mag_link[0]
-            else:
-                # create a link to the "less" semantic. 
-                less_semantic = [semantic for semantic in memory.semantics if semantic.name == 'less']
-                less_link = dataTypes.Link(myPO, [], less_semantic, 1.0)
-                myPO1_mag_link = less_link
-            # update the weight to myPO1_mag_link. 
-            try:
-                myPO1_mag_link.weight = 1.0
-            except:
-                pdb.set_trace()
-            # update the weight to other mag_links. 
-            for link in myPO1_other_mags:
-                link.weight /= 2
+            # call update_mag_semantics() with myPO as firstPO and myPO2 as secondPO. 
+            memory = update_mag_semantics(same_flag, myPO, myPO2, sem_link_PO[0], sem_link_PO2[0], memory)
     else:
-        # update the weight to myPO1_mag_link. 
-        myPO1_mag_link.weight = 1.0
-        # update the weight to other mag_links. 
-        for link in myPO1_other_mags:
-            link.weight /= 2
-        # update the weight to myPO1_mag_link. 
-        myPO2_mag_link.weight = 1.0
-        # update the weight to other mag_links. 
-        for link in myPO2_other_mags:
-            link.weight /= 2
+        # find the matching dimension that each PO is most strongly connected to, and then update magnitude semantic weights. 
+        max_dim = None
+        max_valuePO1 = 0.0
+        current_dim_weight = 0.0
+        for link in myPO.mySemantics:
+            if isinstance(link.mySemantic.amount, (int, float, complex)):
+                if link.weight > current_dim_weight:
+                    max_dim = link.mySemantic.dimension
+                    max_valuePO1 = link.mySemantic.amount
+                    current_dim_weight = link.weight
+        if max_dim:
+            max_valuePO2 = 0.0
+            current_dim_weight = 0.0
+            for link in myPO2.mySemantics:
+                if (link.mySemantic.dimension == max_dim) and (isinstance(link.mySemantic.amount, (int, float, complex))):
+                    if link.weight > current_dim_weight:
+                        max_valuePO2 = link.mySemantic.amount
+                        current_dim_weight = link.weight
+        #pdb.set_trace()
+        # if there are max_dim values, use current max_dim and values to compute ent_magnitudeMoreLessSame().
+        if max_dim:
+            more, less, same_flag, iterations = ent_magnitudeMoreLessSame(max_valuePO1, max_valuePO2, mag_decimal_precision)
+            # find the semantic links connecting to the absolute dimensional value. 
+            sem_link_PO = [link for link in myPO.mySemantics if (link.mySemantic.dimension == max_dim) and link.mySemantic.ont_status == 'state']
+            sem_link_PO2 = [link for link in myPO2.mySemantics if (link.mySemantic.dimension == max_dim) and link.mySemantic.ont_status == 'state']
+            # connect the two POs to the appropraite relative magnitude semantics (based on the invariant patterns detected just above). 
+            if more == max_valuePO2:
+                # call update_mag_semantics() with myPO2 as firstPO and myPO as secondPO. 
+                memory = update_mag_semantics(same_flag, myPO2, myPO, sem_link_PO2[0], sem_link_PO[0], memory)
+            else:
+                # call update_mag_semantics() with myPO as firstPO and myPO2 as secondPO. 
+                memory = update_mag_semantics(same_flag, myPO, myPO2, sem_link_PO[0], sem_link_PO2[0], memory)
     # return memory. 
     return memory
 
 # function calculates more/less/same from two codes of extent based on entropy and competion. 
 def ent_magnitudeMoreLessSame(extent1, extent2, mag_decimal_precision=0):
     # convert extents to whole numbers using the mag_decimal_precision variable, rounding, and adding 1 (mag_decimal_precision and rouding to make decimal values into whole numbers, and adding 1 to account for the possibility that someone has used 0 values for magnitudes). 
-    extent1 = round(extent1*(pow(100, mag_decimal_precision)))+1
-    extent2 = round(extent2*(pow(100, mag_decimal_precision)))+1
+    extent1_round = round(extent1*(pow(100, mag_decimal_precision)))+1
+    extent2_round = round(extent2*(pow(100, mag_decimal_precision)))+1
     # take two representations of extent, and have them compete.
     # first build a simple entropyNet with the extents as lower-level nodes.
     entropyNet = dataTypes.entropyNet()
     # populate the entropyNet. 
-    entropyNet.fillin(extent1, extent2)
+    entropyNet.fillin(extent1_round, extent2_round)
     # until the network settles (i.e., only one output node is active for 3 iterations), keep running.
     entropyNet.runEntropyNet(0.3, 0.1)
     # the active output node is 'more', and the inactive output node is 'less', or the two extents are equal or 'same'. 
@@ -2872,50 +2891,146 @@ def ent_magnitudeMoreLessSame(extent1, extent2, mag_decimal_precision=0):
 # Function to attache magnitude semantics to POs for use with entropy_ops.
 def attach_mag_semantics(same_flag, firstPO, secondPO, sem_link_PO, sem_link_PO2, memory):
     # NOTE: In this function, firstPO is the larger and secondPO is the smaller (unless same_flag is True, in which case the two are equal).
-    # I think that the following bit of code is redundent, but it's here just in case to make sure that no magnitude semantics are attached to the POs if either of them are already attached to a magnitude semantic. Check if either PO is attached to 'more' or 'less' or 'same', and if so, set attach_mag_sem_flag to False.
-    attach_mag_sem_flag = True
-    for semantic in firstPO.mySemantics:
-        if semantic.mySemantic.name == 'more' or semantic.mySemantic.name == 'less' or semantic.mySemantic.name == 'same':
-            attach_mag_sem_flag = False
-    # if attach_mag_sem_flag is True, then go ahead and attach magnitude semantics.
-    if attach_mag_sem_flag:
-        if same_flag:
-            # connect both POs to the 'same' semantic.
-            # find the 'same' semantic (if it does not exist, create it).
-            sem_exist_flag = False
+    if same_flag:
+        # connect both POs to the 'same' semantic.
+        # find the 'same' semantic (if it does not exist, create it).
+        sem_exist_flag = False
+        for semantic in memory.semantics:
+            if semantic.name == 'same':
+                # connect the semantic to both POs.
+                new_link1 = dataTypes.Link(firstPO, [], semantic, 1.0)
+                firstPO.mySemantics.append(new_link1)
+                semantic.myPOs.append(new_link1)
+                memory.Links.append(new_link1)
+                new_link2 = dataTypes.Link(secondPO, [], semantic, 1.0)
+                secondPO.mySemantics.append(new_link2)
+                semantic.myPOs.append(new_link2)
+                memory.Links.append(new_link2)
+                # set sem_exist_flag to True and break.
+                sem_exist_flag = True
+                break
+        # if the 'same semantic does not exist, make it and connect it to the two POs.
+        if not sem_exist_flag:
+            # you have the create the semantics.
+            same_semantic = dataTypes.Semantic('same', 'nil', None, 'SDM')
+            memory.semantics.append(same_semantic)
+            # create links between POs and 'same'.
+            PO1_link = dataTypes.Link(firstPO, [], same_semantic, 1.0)
+            firstPO.mySemantics.append(PO1_link)
+            same_semantic.myPOs.append(PO1_link)
+            memory.Links.append(PO1_link)
+            PO2_link = dataTypes.Link(secondPO, [], same_semantic, 1.0)
+            secondPO.mySemantics.append(PO2_link)
+            same_semantic.myPOs.append(PO2_link)
+            memory.Links.append(PO2_link)
+    else:
+        # connect firstPO to 'more' and secondPO to 'less'.
+        # find the 'more' and 'less' semantics (if they do not exist, create them).
+        sem_exist_flag = False
+        sem_added = 0
+        for semantic in memory.semantics:
+            if semantic.name == 'more':
+                # connect the samentic to firstPO.
+                new_link = dataTypes.Link(firstPO, [], semantic, 1.0)
+                firstPO.mySemantics.append(new_link)
+                semantic.myPOs.append(new_link)
+                memory.Links.append(new_link)
+                # set the sem_exist flag to True, and check if you've connected both 'more' and 'less' semantics (i.e., sem_added == 2). If yes, then break. 
+                sem_exist_flag = True
+                sem_added += 1
+                if sem_added == 2:
+                    break
+            elif semantic.name == 'less':
+                # connect the samentic to secondPO.
+                new_link = dataTypes.Link(secondPO, [], semantic, 1.0)
+                secondPO.mySemantics.append(new_link)
+                semantic.myPOs.append(new_link)
+                memory.Links.append(new_link)
+                # set the sem_exist flag to True, and check if you've connected both 'more' and 'less' semantics (i.e., sem_added == 2). If yes, then break. 
+                sem_exist_flag = True
+                sem_added += 1
+                if sem_added == 2:
+                    break
+        if not sem_exist_flag:
+            # you have the create the semantics.
+            more_semantic = dataTypes.Semantic('more', 'nil', None, 'SDM')
+            less_semantic = dataTypes.Semantic('less', 'nil', None, 'SDM')
+            memory.semantics.append(more_semantic)
+            memory.semantics.append(less_semantic)
+            # create links between firstPO and 'more'.
+            more_link = dataTypes.Link(firstPO, [], more_semantic, 1.0)
+            firstPO.mySemantics.append(more_link)
+            more_semantic.myPOs.append(more_link)
+            memory.Links.append(more_link)
+            # create links between secondPO and 'less'.
+            less_link = dataTypes.Link(secondPO, [], less_semantic, 1.0)
+            secondPO.mySemantics.append(less_link)
+            less_semantic.myPOs.append(less_link)
+            memory.Links.append(less_link)
+    # reduce weight to absolute value semantics to .5 (as this process constitutes a comparison).
+    for link in sem_link_PO:
+        link.weight /= 2
+    for link in sem_link_PO2:
+        link.weight /= 2
+    # return memory.
+    return memory
+
+# function to update the connections to magnitude semantics during the basic_en_based_mag_refinement() function. 
+def update_mag_semantics(same_flag, firstPO, secondPO, sem_link_PO, sem_link_PO2, memory):
+    # NOTE: In this function, firstPO is the larger and secondPO is the smaller (unless same_flag is True, in which case the two are equal).
+    if same_flag:
+        # update the connections of both POs to the 'same' semantic and the sem_link_PO semantic, and halve weights to other semantics.
+        found_same = False
+        for link in firstPO.mySemantics:
+            if link is sem_link_PO:
+                link.weight = 1.0
+            elif link.mySemantic.name == 'same':
+                link.weight = 1.0
+                found_same = True
+            else:
+                link.weight /= 2
+        if not found_same:
+            # connect firstPO to same semantic. 
             for semantic in memory.semantics:
                 if semantic.name == 'same':
-                    # connect the semantic to both POs.
-                    new_link1 = dataTypes.Link(firstPO, [], semantic, 1.0)
-                    firstPO.mySemantics.append(new_link1)
-                    semantic.myPOs.append(new_link1)
-                    memory.Links.append(new_link1)
-                    new_link2 = dataTypes.Link(secondPO, [], semantic, 1.0)
-                    secondPO.mySemantics.append(new_link2)
-                    semantic.myPOs.append(new_link2)
-                    memory.Links.append(new_link2)
-                    # set sem_exist_flag to True and break.
-                    sem_exist_flag = True
+                    # connect the samentic to firstPO.
+                    new_link = dataTypes.Link(firstPO, [], semantic, 1.0)
+                    firstPO.mySemantics.append(new_link)
+                    semantic.myPOs.append(new_link)
+                    memory.Links.append(new_link)
                     break
-            # if the 'same semantic does not exist, make it and connect it to the two POs.
-            if not sem_exist_flag:
-                # you have the create the semantics.
-                same_semantic = dataTypes.Semantic('same', 'nil', None, 'SDM')
-                memory.semantics.append(same_semantic)
-                # create links between POs and 'same'.
-                PO1_link = dataTypes.Link(firstPO, [], same_semantic, 1.0)
-                firstPO.mySemantics.append(PO1_link)
-                same_semantic.myPOs.append(PO1_link)
-                memory.Links.append(PO1_link)
-                PO2_link = dataTypes.Link(secondPO, [], same_semantic, 1.0)
-                secondPO.mySemantics.append(PO2_link)
-                same_semantic.myPOs.append(PO2_link)
-                memory.Links.append(PO2_link)
-        else:
-            # connect firstPO to 'more' and secondPO to 'less'.
-            # find the 'more' and 'less' semantics (if they do not exist, create them).
-            sem_exist_flag = False
-            sem_added = 0
+        found_same = False
+        for link in secondPO.mySemantics:
+            if link is sem_link_PO:
+                link.weight = 1.0
+            elif link.mySemantic.name == 'same':
+                link.weight = 1.0
+                found_same = True
+            else:
+                link.weight /= 2
+        if not found_same:
+            # connect firstPO to same semantic. 
+            for semantic in memory.semantics:
+                if semantic.name == 'same':
+                    # connect the samentic to firstPO.
+                    new_link = dataTypes.Link(firstPO, [], semantic, 1.0)
+                    secondPO.mySemantics.append(new_link)
+                    semantic.myPOs.append(new_link)
+                    memory.Links.append(new_link)
+                    break
+    else:
+        # update the connections of firstPO to the 'more' semantic and the sem_link_PO semantic, and halve weights to other semantics. 
+        found_same = False
+        for link in firstPO.mySemantics:
+            if link is sem_link_PO:
+                link.weight = 1.0
+            elif link.mySemantic.name == 'more':
+                link.weight = 1.0
+                found_same = True
+            else:
+                link.weight /= 2
+        if not found_same:
+            # connect firstPO to same semantic. 
             for semantic in memory.semantics:
                 if semantic.name == 'more':
                     # connect the samentic to firstPO.
@@ -2923,44 +3038,28 @@ def attach_mag_semantics(same_flag, firstPO, secondPO, sem_link_PO, sem_link_PO2
                     firstPO.mySemantics.append(new_link)
                     semantic.myPOs.append(new_link)
                     memory.Links.append(new_link)
-                    # set the sem_exist flag to True, and check if you've connected both 'more' and 'less' semantics (i.e., sem_added == 2). If yes, then break. 
-                    sem_exist_flag = True
-                    sem_added += 1
-                    if sem_added == 2:
-                        break
-                elif semantic.name == 'less':
-                    # connect the samentic to secondPO.
-                    new_link = dataTypes.Link(secondPO, [], semantic, 1.0)
+                    break
+        # update the connections of secondPO to the 'less' semantic and the sem_link_PO semantic, and halve weights to other semantics. 
+        found_same = False
+        for link in secondPO.mySemantics:
+            if link is sem_link_PO2:
+                link.weight = 1.0
+            elif link.mySemantic.name == 'less':
+                link.weight = 1.0
+                found_same = True
+            else:
+                link.weight /= 2
+        if not found_same:
+            # connect firstPO to same semantic. 
+            for semantic in memory.semantics:
+                if semantic.name == 'less':
+                    # connect the samentic to firstPO.
+                    new_link = dataTypes.Link(firstPO, [], semantic, 1.0)
                     secondPO.mySemantics.append(new_link)
                     semantic.myPOs.append(new_link)
                     memory.Links.append(new_link)
-                    # set the sem_exist flag to True, and check if you've connected both 'more' and 'less' semantics (i.e., sem_added == 2). If yes, then break. 
-                    sem_exist_flag = True
-                    sem_added += 1
-                    if sem_added == 2:
-                        break
-            if not sem_exist_flag:
-                # you have the create the semantics.
-                more_semantic = dataTypes.Semantic('more', 'nil', None, 'SDM')
-                less_semantic = dataTypes.Semantic('less', 'nil', None, 'SDM')
-                memory.semantics.append(more_semantic)
-                memory.semantics.append(less_semantic)
-                # create links between firstPO and 'more'.
-                more_link = dataTypes.Link(firstPO, [], more_semantic, 1.0)
-                firstPO.mySemantics.append(more_link)
-                more_semantic.myPOs.append(more_link)
-                memory.Links.append(more_link)
-                # create links between secondPO and 'less'.
-                less_link = dataTypes.Link(secondPO, [], less_semantic, 1.0)
-                secondPO.mySemantics.append(less_link)
-                less_semantic.myPOs.append(less_link)
-                memory.Links.append(less_link)
-        # reduce weight to absolute value semantics to .5 (as this process constitutes a comparison).
-        for link in sem_link_PO:
-            link.weight /= 2
-        for link in sem_link_PO2:
-            link.weight /= 2
-    # return memory.
+                    break
+    # done. 
     return memory
 
 # function to calculate over-all same/diff from entropy.
