@@ -2262,15 +2262,9 @@ def schema_requirements(memory):
                 elif myRB.myPred[0].max_map < threshold:
                     do_schematize = False
                     break
-                # check whther the object or the P (if the RB is higher_order) is below threshold
-                elif len(myRB.myObj) > 0:
-                    if myRB.myObj[0].max_map < threshold:
-                        do_schematize = False
-                        break
-                elif len(myRB.myChildP) > 0:
-                    if myRB.myChildP[0].max_map < threshold:
-                        do_schematize = False
-                        break
+                elif myRB.myObj[0].max_map < threshold:
+                    do_schematize = False
+                    break
             if not do_schematize:
                 break
     if do_schematize:
@@ -2283,14 +2277,9 @@ def schema_requirements(memory):
                 if myRB.myPred[0].max_map < threshold:
                     do_schematize = False
                     break
-                elif len(myRB.myObj) > 0: 
-                    if myRB.myObj[0].max_map < threshold:
-                        do_schematize = False
-                        break
-                elif len(myRB.myChildP) > 0: 
-                    if myRB.myChildP[0].max_map < threshold:
-                        do_schematize = False
-                        break
+                elif myRB.myObj[0].max_map < threshold:
+                    do_schematize = False
+                    break
                 elif len(myRB.myParentPs) > 0:
                     if myRB.myParentPs[0].max_map < threshold:
                         do_schematize = False
@@ -2315,14 +2304,9 @@ def schema_requirements(memory):
                     elif myRB.myPred[0].max_map < threshold:
                         do_schematize = False
                         break
-                    elif len(myRB.myObj) > 0: 
-                        if myRB.myObj[0].max_map < threshold:
-                            do_schematize = False
-                            break
-                    elif len(myRB.myChildP) > 0: 
-                        if myRB.myChildP[0].max_map < threshold:
-                            do_schematize = False
-                            break
+                    elif myRB.myObj[0].max_map < threshold:
+                        do_schematize = False
+                        break
                 if not do_schematize:
                     break
     if do_schematize:
@@ -2335,14 +2319,9 @@ def schema_requirements(memory):
                 if myRB.myPred[0].max_map < threshold:
                     do_schematize = False
                     break
-                elif len(myRB.myObj) > 0: 
-                    if myRB.myObj[0].max_map < threshold:
-                        do_schematize = False
-                        break
-                elif len(myRB.myChildP) > 0: 
-                    if myRB.myChildP[0].max_map < threshold:
-                        do_schematize = False
-                        break
+                elif myRB.myObj[0].max_map < threshold:
+                    do_schematize = False
+                    break
                 elif len(myRB.myParentPs) > 0:
                     if myRB.myParentPs[0].max_map < threshold:
                         do_schematize = False
@@ -4563,8 +4542,8 @@ def create_RB_dict(myRB, analog_counter):
         object_name = 'non_exist'
         object_sems = [] # there are no semantics.
         # if there is a child P, then create a new sym_dict with that P unit, and set P_name, to the name of that P_unit.
-        p_dict = create_dict_P(myRB.myChildP[0], analog_counter)
-        P_name = myRB.myChildP[0].name
+        p_dict = create_dict_P(myRB.myChildP, analog_counter)
+        P_name = myRB.myChildP.name
     else:
         higher_order = False
         object_name = myRB.myObj[0].name
