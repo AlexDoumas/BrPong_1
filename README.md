@@ -248,10 +248,11 @@ symProps = [{'name': ‘non_exist’, 'RBs': [{'pred_name': ‘non_exist’, 'pr
 
 Notice that the slot for the P unit is filled with ‘non_exist’, indicating that the proposition contains no P unit, and that the slot for the Pred unit name is filled with ‘non_exist’, indicating that the proposition contains object units not bound to pred units. 
 
-After model runs, D 
+ 
 
 References
 For details of the DORA model see:
 Doumas, Hummel, & Sandhofer (2008). A theory of the discovery and predication of relational concepts (Appendix A). Psychological Review, 115, 1-43. 
-Doumas, Martin, Puebla, & Hummel (XXXX). 
+Doumas, Martin, Puebla, & Hummel (2022), A theory of relation learning and cross-domain generalization (Appendix A). 
+This code is open source and available under CC license (please just cite/credit if you use). 
 
